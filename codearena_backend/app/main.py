@@ -1,6 +1,6 @@
 import logging
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -24,10 +24,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     if not settings.use_mock_db:
-        from app.db.engine import engine
-        from app.db.base import Base
         # Import tables so they register with Base.metadata
         import app.db.tables  # noqa: F401
+        from app.db.base import Base
+        from app.db.engine import engine
 
         logger.info("Creating database tables (if not exist)")
         async with engine.begin() as conn:
@@ -37,8 +37,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.info("Running in mock mode — no database")
 
+    from app.services.queue.runtime import get_runtime
+
+    runtime = get_runtime()
+    await runtime.start()
+
     logger.info("CodeArena API starting up")
     yield
+
+    await runtime.stop()
 
     if not settings.use_mock_db:
         from app.db.engine import engine

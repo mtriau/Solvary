@@ -7,15 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.core.exceptions import ForbiddenException
 from app.models.user import User
-from app.repositories.user_repository import MockUserRepository, UserRepository
+from app.repositories import mock_registry
+from app.repositories.problem_repository import ProblemRepository
+from app.repositories.submission_repository import SubmissionRepository
+from app.repositories.testcase_repository import TestCaseRepository
+from app.repositories.user_repository import UserRepository
 from app.services.auth_service import AuthService
+from app.services.problem_service import ProblemService
+from app.services.queue.runtime import ExecutionRuntime, get_runtime
+from app.services.submission_service import SubmissionService
 from app.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-# ── Mock singletons (used when USE_MOCK_DB=true) ─────────────────
-
-_mock_user_repo = MockUserRepository()
 
 
 # ── DB session dependency ─────────────────────────────────────────
@@ -40,11 +43,49 @@ def get_user_repository(
     db: Annotated[AsyncSession | None, Depends(get_db)],
 ) -> UserRepository:
     if settings.use_mock_db:
-        return _mock_user_repo
+        return mock_registry.mock_user_repo
     from app.repositories.sqlalchemy_user_repository import SQLAlchemyUserRepository
 
     assert db is not None
     return SQLAlchemyUserRepository(db)
+
+
+def get_problem_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> ProblemRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_problem_repo
+    from app.repositories.sqlalchemy_problem_repository import SQLAlchemyProblemRepository
+
+    assert db is not None
+    return SQLAlchemyProblemRepository(db)
+
+
+def get_testcase_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> TestCaseRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_testcase_repo
+    from app.repositories.sqlalchemy_testcase_repository import SQLAlchemyTestCaseRepository
+
+    assert db is not None
+    return SQLAlchemyTestCaseRepository(db)
+
+
+def get_submission_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> SubmissionRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_submission_repo
+    from app.repositories.sqlalchemy_submission_repository import (
+        SQLAlchemySubmissionRepository,
+    )
+
+    assert db is not None
+    return SQLAlchemySubmissionRepository(db)
 
 
 # ── Service providers ─────────────────────────────────────────────
@@ -63,6 +104,23 @@ def get_user_service(
     return UserService(user_repo)
 
 
+def get_problem_service(
+    problem_repo: Annotated[ProblemRepository, Depends(get_problem_repository)],
+    testcase_repo: Annotated[TestCaseRepository, Depends(get_testcase_repository)],
+) -> ProblemService:
+    return ProblemService(problem_repo, testcase_repo)
+
+
+def get_submission_service(
+    submission_repo: Annotated[SubmissionRepository, Depends(get_submission_repository)],
+    problem_repo: Annotated[ProblemRepository, Depends(get_problem_repository)],
+    testcase_repo: Annotated[TestCaseRepository, Depends(get_testcase_repository)],
+    runtime: Annotated[ExecutionRuntime, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SubmissionService:
+    return SubmissionService(submission_repo, problem_repo, testcase_repo, runtime, settings)
+
+
 # ── Auth dependencies ─────────────────────────────────────────────
 
 
@@ -79,3 +137,14 @@ async def require_admin(
     if current_user.role != "admin":
         raise ForbiddenException("Admin privileges required")
     return current_user
+
+
+# ── Execution quota (§6.6) ────────────────────────────────────────
+
+
+async def check_execution_quota(
+    current_user: Annotated[User, Depends(get_current_user)],
+    runtime: Annotated[ExecutionRuntime, Depends(get_runtime)],
+) -> None:
+    """Reserves a concurrency slot; the worker releases it when the job ends."""
+    runtime.quota.check_and_reserve(current_user.id)

@@ -8,6 +8,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'));
 const ProblemsPage = lazy(() => import('@/pages/problems/ProblemsPage'));
+const ProblemPage = lazy(() => import('@/pages/problems/ProblemPage'));
 const WorkspacesPage = lazy(() => import('@/pages/workspaces/WorkspacesPage'));
 const NotFoundPage = lazy(() => import('@/pages/not-found/NotFoundPage'));
 
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, element: <Navigate to="/problems" replace /> },
               { path: 'problems', element: <ProblemsPage /> },
+              { path: 'problems/:slug', element: <ProblemPage /> },
               { path: 'workspaces', element: <WorkspacesPage /> },
             ],
           },

@@ -1,8 +1,8 @@
 from abc import abstractmethod
 
+from app.mock_data.users import MOCK_USERS
 from app.models.user import User
 from app.repositories.base import AbstractRepository
-from app.mock_data.users import MOCK_USERS
 
 
 class UserRepository(AbstractRepository[User]):

@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.tables import UserRow
@@ -50,7 +51,7 @@ class SQLAlchemyUserRepository(UserRepository):
             row.hashed_password = entity.hashed_password
             row.avatar_url = entity.avatar_url
             row.role = entity.role
-            row.updated_at = datetime.now(timezone.utc)
+            row.updated_at = datetime.now(UTC)
             await self._session.flush()
         return entity
 

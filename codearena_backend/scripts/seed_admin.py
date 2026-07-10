@@ -12,13 +12,12 @@ import asyncio
 import sys
 import uuid
 
+import app.db.tables  # noqa: F401 — register tables with Base.metadata
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.engine import async_session_factory, engine
 from app.models.user import User
 from app.repositories.sqlalchemy_user_repository import SQLAlchemyUserRepository
-
-import app.db.tables  # noqa: F401 — register tables with Base.metadata
 
 
 async def seed(email: str, password: str, name: str) -> None:

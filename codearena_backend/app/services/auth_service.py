@@ -1,9 +1,14 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.config import Settings
 from app.core.exceptions import ConflictException, UnauthorizedException
-from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import TokenResponse
@@ -27,8 +32,8 @@ class AuthService:
             hashed_password=hash_password(password),
             avatar_url=f"https://api.dicebear.com/9.x/initials/svg?seed={name[:2].upper()}",
             role="user",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         await self._user_repo.create(user)
         token = create_access_token({"sub": user.id})
