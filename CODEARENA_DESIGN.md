@@ -185,8 +185,9 @@ Domain `@dataclass` shown; the SQLAlchemy `*Row` mirrors it 1:1 with the noted
 columns/indexes/FKs (all FKs `ON DELETE CASCADE` unless stated).
 
 ### User (modified) — `user_`
-Existing MattChat model + `role: Literal["user", "admin"] = "user"`. Problem authoring
-and testcase management require `admin`.
+Existing MattChat model + `role: Literal["user", "admin"] = "user"`, **minus** the chat
+`status` presence field (in CodeArena, presence lives in Yjs awareness, not on the user
+row). Problem authoring and testcase management require `admin`.
 
 ### Problem — `prob_`
 ```
