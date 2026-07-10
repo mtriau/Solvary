@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Databases
+*.db
+*.db-journal
+
+# ML checkpoints (large binaries)
+checkpoints_sft/
+checkpoints/
+*.pt
+*.safetensors
+
+# Env / secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
