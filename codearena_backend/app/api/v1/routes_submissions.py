@@ -36,9 +36,15 @@ async def list_submissions(
     current_user: Annotated[User, Depends(get_current_user)],
     service: Annotated[SubmissionService, Depends(get_submission_service)],
     problem_id: str | None = None,
+    workspace_id: str | None = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[SubmissionResponse]:
+    if workspace_id:
+        # Shared attempt history: every member's submissions (M4)
+        return await service.list_for_workspace(
+            current_user, workspace_id, cursor=cursor, limit=limit
+        )
     return await service.list_mine(
         current_user, problem_id=problem_id, cursor=cursor, limit=limit
     )

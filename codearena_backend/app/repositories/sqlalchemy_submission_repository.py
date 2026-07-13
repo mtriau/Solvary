@@ -21,6 +21,7 @@ class SQLAlchemySubmissionRepository(SubmissionRepository):
         self,
         user_id: str | None = None,
         problem_id: str | None = None,
+        workspace_id: str | None = None,
         cursor: str | None = None,
         limit: int = 50,
     ) -> tuple[list[Submission], str | None]:
@@ -29,6 +30,8 @@ class SQLAlchemySubmissionRepository(SubmissionRepository):
             stmt = stmt.where(SubmissionRow.user_id == user_id)
         if problem_id:
             stmt = stmt.where(SubmissionRow.problem_id == problem_id)
+        if workspace_id:
+            stmt = stmt.where(SubmissionRow.workspace_id == workspace_id)
 
         # Newest first; tie-safe keyset on (created_at, id) descending —
         # submissions burst-insert, so timestamp ties are the norm here

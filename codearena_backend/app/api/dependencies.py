@@ -165,10 +165,20 @@ def get_submission_service(
     submission_repo: Annotated[SubmissionRepository, Depends(get_submission_repository)],
     problem_repo: Annotated[ProblemRepository, Depends(get_problem_repository)],
     testcase_repo: Annotated[TestCaseRepository, Depends(get_testcase_repository)],
+    workspace_repo: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+    member_repo: Annotated[MemberRepository, Depends(get_member_repository)],
     runtime: Annotated[ExecutionRuntime, Depends(get_runtime)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SubmissionService:
-    return SubmissionService(submission_repo, problem_repo, testcase_repo, runtime, settings)
+    return SubmissionService(
+        submission_repo,
+        problem_repo,
+        testcase_repo,
+        workspace_repo,
+        member_repo,
+        runtime,
+        settings,
+    )
 
 
 def get_doc_repository(
@@ -188,6 +198,7 @@ def get_workspace_service(
     member_repo: Annotated[MemberRepository, Depends(get_member_repository)],
     file_repo: Annotated[FileRepository, Depends(get_file_repository)],
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    problem_repo: Annotated[ProblemRepository, Depends(get_problem_repository)],
     doc_repo: Annotated[DocRepository, Depends(get_doc_repository)],
 ) -> WorkspaceService:
     # doc_repo shares the request session — doc writes must join the request
@@ -197,6 +208,7 @@ def get_workspace_service(
         member_repo,
         file_repo,
         user_repo,
+        problem_repo,
         get_collab_manager(),
         doc_repo,
     )

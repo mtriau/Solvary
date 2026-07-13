@@ -52,6 +52,7 @@ export async function createSubmission(data: {
   problem_id: string;
   language: string;
   code: string;
+  workspace_id?: string;
 }): Promise<Submission> {
   return apiClient.post('/v1/submissions', data);
 }
@@ -76,8 +77,9 @@ export async function fetchWorkspace(id: string): Promise<Workspace> {
 }
 
 export async function createWorkspace(data: {
-  name: string;
+  name?: string;
   language: string;
+  problem_id?: string;
 }): Promise<Workspace> {
   return apiClient.post('/v1/workspaces', data);
 }

@@ -10,8 +10,9 @@ MemberRole = Literal["owner", "editor", "viewer"]
 
 
 class WorkspaceCreate(BaseModel):
-    name: str
+    name: str | None = None  # defaults to the problem title for attempts
     language: str = "python"
+    problem_id: str | None = None  # set -> challenge attempt (M4)
 
 
 class WorkspaceUpdate(BaseModel):
@@ -25,6 +26,8 @@ class WorkspaceResponse(BaseModel):
     owner_id: str
     language: str
     problem_id: str | None
+    problem_slug: str | None = None
+    problem_title: str | None = None
     my_role: MemberRole
     created_at: datetime
 

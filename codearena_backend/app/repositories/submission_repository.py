@@ -10,6 +10,7 @@ class SubmissionRepository(AbstractRepository[Submission]):
         self,
         user_id: str | None = None,
         problem_id: str | None = None,
+        workspace_id: str | None = None,
         cursor: str | None = None,
         limit: int = 50,
     ) -> tuple[list[Submission], str | None]:
@@ -28,6 +29,7 @@ class MockSubmissionRepository(SubmissionRepository):
         self,
         user_id: str | None = None,
         problem_id: str | None = None,
+        workspace_id: str | None = None,
         cursor: str | None = None,
         limit: int = 50,
     ) -> tuple[list[Submission], str | None]:
@@ -36,6 +38,8 @@ class MockSubmissionRepository(SubmissionRepository):
             items = [s for s in items if s.user_id == user_id]
         if problem_id:
             items = [s for s in items if s.problem_id == problem_id]
+        if workspace_id:
+            items = [s for s in items if s.workspace_id == workspace_id]
         items.sort(key=lambda s: (s.created_at, s.id), reverse=True)
 
         if cursor:

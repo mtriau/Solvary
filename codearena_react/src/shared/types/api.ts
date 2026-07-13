@@ -103,6 +103,8 @@ export interface Workspace {
   owner_id: string;
   language: string;
   problem_id: string | null;
+  problem_slug: string | null;
+  problem_title: string | null;
   my_role: MemberRole;
   created_at: string;
 }

@@ -53,6 +53,14 @@ readOnly editor and the server drops (and resyncs) any doc update they send.
 File metadata is REST-authoritative; content is CRDT-only, keyed by file id.
 Try it: two browsers, same workspace, `/workspaces` — live cursors included.
 
+## Challenge attempts (M4)
+
+A workspace bound to a problem IS a challenge attempt: "Solve together" on any
+problem page creates one seeded with the starter code. Members edit the same
+buffer live; any editor can Submit (workspace-tagged), and every member —
+viewers included — follows the same verdict stream (the submission id rides
+Yjs awareness). Shared history: `GET /v1/submissions?workspace_id=...`.
+
 ## Tests
 
 ```powershell

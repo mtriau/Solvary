@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Loader2, Play } from 'lucide-react';
+import { ArrowLeft, Loader2, Play, Users } from 'lucide-react';
 import { useMySubmissions, useProblem } from '@/features/problems/hooks/useProblems';
 import { useJudgeStream } from '@/features/execution/hooks/useJudgeStream';
 import { VerdictPanel } from '@/features/execution/components/VerdictPanel';
+import { createWorkspace } from '@/shared/lib/api';
 
 const LANGUAGES = ['python', 'javascript'] as const;
 
@@ -24,6 +25,19 @@ export default function ProblemPage() {
   const { submit, events, verdict, isJudging, error, submissionId } = useJudgeStream();
   const submissions = useMySubmissions(problem?.id);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [creatingWs, setCreatingWs] = useState(false);
+
+  const solveCollaboratively = async () => {
+    if (!problem) return;
+    setCreatingWs(true);
+    try {
+      const ws = await createWorkspace({ problem_id: problem.id, language });
+      navigate(`/workspaces/${ws.id}`);
+    } finally {
+      setCreatingWs(false);
+    }
+  };
 
   // Load starter code when the problem (or language) changes — but never
   // clobber user edits mid-session
@@ -129,18 +143,33 @@ export default function ProblemPage() {
               </option>
             ))}
           </select>
-          <button
-            onClick={() => submit(problem.id, language, code)}
-            disabled={isJudging || !code.trim()}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-          >
-            {isJudging ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Play size={14} />
-            )}
-            {isJudging ? 'Judging…' : 'Submit'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={solveCollaboratively}
+              disabled={creatingWs}
+              title="Create a shared workspace bound to this problem — invite others and solve together"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {creatingWs ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Users size={14} />
+              )}
+              Solve together
+            </button>
+            <button
+              onClick={() => submit(problem.id, language, code)}
+              disabled={isJudging || !code.trim()}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {isJudging ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Play size={14} />
+              )}
+              {isJudging ? 'Judging…' : 'Submit'}
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0">

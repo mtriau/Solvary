@@ -8,9 +8,11 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.models.problem import Problem
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceFile, WorkspaceMember
 from app.repositories.doc_repository import DocRepository
+from app.repositories.problem_repository import ProblemRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.workspace_repository import (
     FileRepository,
@@ -42,6 +44,7 @@ class WorkspaceService:
         member_repo: MemberRepository,
         file_repo: FileRepository,
         user_repo: UserRepository,
+        problem_repo: ProblemRepository,
         collab: CollaborationManager,
         doc_repo: DocRepository,
     ) -> None:
@@ -49,6 +52,7 @@ class WorkspaceService:
         self._members = member_repo
         self._files = file_repo
         self._users = user_repo
+        self._problems = problem_repo
         self._collab = collab
         self._doc_repo = doc_repo
 
@@ -70,11 +74,22 @@ class WorkspaceService:
     # ── workspaces ─────────────────────────────────────────────────
 
     async def create(self, user: User, data: WorkspaceCreate) -> WorkspaceResponse:
+        problem: Problem | None = None
+        if data.problem_id:
+            problem = await self._problems.get_by_id(data.problem_id)
+            if not problem:
+                raise NotFoundException(f"Problem {data.problem_id} not found")
+
+        name = data.name or (problem.title if problem else None)
+        if not name:
+            raise BadRequestException("Workspace name is required")
+
         workspace = Workspace(
             id=f"ws_{uuid.uuid4().hex[:8]}",
-            name=data.name,
+            name=name,
             owner_id=user.id,
             language=data.language,
+            problem_id=problem.id if problem else None,
         )
         await self._workspaces.create(workspace)
         await self._members.create(
@@ -95,9 +110,12 @@ class WorkspaceService:
             language=data.language,
         )
         await self._files.create(file)
-        await doc_store.birth(self._doc_repo, workspace.id, {file.id: ""})
+        # Challenge attempts are seeded with the problem's starter code —
+        # server-side, so there is no first-client seeding race (design 7.4)
+        starter = problem.starter_code.get(data.language, "") if problem else ""
+        await doc_store.birth(self._doc_repo, workspace.id, {file.id: starter})
 
-        return self._to_response(workspace, "owner")
+        return self._to_response(workspace, "owner", problem)
 
     async def list_mine(self, user: User) -> list[WorkspaceResponse]:
         memberships = await self._members.list_by_user(user.id)
@@ -105,12 +123,12 @@ class WorkspaceService:
         for m in sorted(memberships, key=lambda m: m.created_at, reverse=True):
             workspace = await self._workspaces.get_by_id(m.workspace_id)
             if workspace:
-                out.append(self._to_response(workspace, m.role))
+                out.append(self._to_response(workspace, m.role, await self._problem_of(workspace)))
         return out
 
     async def get(self, workspace_id: str, user: User) -> WorkspaceResponse:
         workspace, member = await self.require_role(workspace_id, user, "viewer")
-        return self._to_response(workspace, member.role)
+        return self._to_response(workspace, member.role, await self._problem_of(workspace))
 
     async def update(
         self, workspace_id: str, user: User, data: WorkspaceUpdate
@@ -121,7 +139,7 @@ class WorkspaceService:
         if data.language is not None:
             workspace.language = data.language
         await self._workspaces.update(workspace)
-        return self._to_response(workspace, member.role)
+        return self._to_response(workspace, member.role, await self._problem_of(workspace))
 
     async def delete(self, workspace_id: str, user: User) -> None:
         await self.require_role(workspace_id, user, "owner")
@@ -251,14 +269,21 @@ class WorkspaceService:
 
     # ── mapping ────────────────────────────────────────────────────
 
+    async def _problem_of(self, w: Workspace) -> Problem | None:
+        return await self._problems.get_by_id(w.problem_id) if w.problem_id else None
+
     @staticmethod
-    def _to_response(w: Workspace, my_role: str) -> WorkspaceResponse:
+    def _to_response(
+        w: Workspace, my_role: str, problem: Problem | None = None
+    ) -> WorkspaceResponse:
         return WorkspaceResponse(
             id=w.id,
             name=w.name,
             owner_id=w.owner_id,
             language=w.language,
             problem_id=w.problem_id,
+            problem_slug=problem.slug if problem else None,
+            problem_title=problem.title if problem else None,
             my_role=my_role,  # type: ignore[arg-type]
             created_at=w.created_at,
         )

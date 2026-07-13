@@ -6,6 +6,7 @@ import { useAuth } from '@/app/providers/AuthProvider';
 import CollabEditor from '@/features/collaboration/CollabEditor';
 import PresenceBar from '@/features/collaboration/PresenceBar';
 import { useCollab } from '@/features/collaboration/useCollab';
+import ChallengePanel from '@/features/workspaces/ChallengePanel';
 import FileTree from '@/features/workspaces/FileTree';
 import SharePanel from '@/features/workspaces/SharePanel';
 import {
@@ -137,6 +138,13 @@ export default function WorkspacePage() {
             </div>
           )}
         </main>
+        {workspace.problem_id && (
+          <ChallengePanel
+            workspace={workspace}
+            collab={collab}
+            activeFileId={activeFileId}
+          />
+        )}
       </div>
     </div>
   );

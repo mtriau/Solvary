@@ -22,6 +22,10 @@ const INITIAL: JudgeState = {
 /**
  * Submit code and stream judge events over SSE (replay-then-follow —
  * the same fetch-reader pattern as MattChat's useStreamingMessage).
+ *
+ * `follow` streams an EXISTING submission — replay-then-follow on the
+ * server means late subscribers still get the whole story. This is how
+ * workspace peers watch each other's runs in a pair interview (M4).
  */
 export function useJudgeStream() {
   const [state, setState] = useState<JudgeState>(INITIAL);
@@ -32,8 +36,55 @@ export function useJudgeStream() {
     setState(INITIAL);
   }, []);
 
+  const stream = useCallback(async (submissionId: string, abort: AbortController) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(
+      `${env.apiBaseUrl}/v1/submissions/${submissionId}/events`,
+      {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        signal: abort.signal,
+      },
+    );
+    if (!response.ok || !response.body) {
+      throw new Error(`Stream failed: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() ?? '';
+      for (const frame of frames) {
+        const line = frame.trim();
+        if (!line.startsWith('data: ')) continue;
+        const event: JudgeEvent = JSON.parse(line.slice(6));
+        setState((s) => ({
+          ...s,
+          events: [...s.events, event],
+          verdict: event.kind === 'verdict' ? event : s.verdict,
+          isJudging: event.kind !== 'verdict' && event.kind !== 'error',
+          error:
+            event.kind === 'error' ? (event.message ?? 'Judge error') : s.error,
+        }));
+      }
+    }
+  }, []);
+
   const submit = useCallback(
-    async (problemId: string, language: string, code: string) => {
+    async (
+      problemId: string,
+      language: string,
+      code: string,
+      workspaceId?: string,
+    ): Promise<string | null> => {
       abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
@@ -44,50 +95,33 @@ export function useJudgeStream() {
           problem_id: problemId,
           language,
           code,
+          ...(workspaceId ? { workspace_id: workspaceId } : {}),
         });
         setState((s) => ({ ...s, submissionId: submission.id }));
+        await stream(submission.id, abort);
+        return submission.id;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return null;
+        setState((s) => ({
+          ...s,
+          isJudging: false,
+          error: (err as Error).message,
+        }));
+        return null;
+      }
+    },
+    [stream],
+  );
 
-        const token = localStorage.getItem('auth_token');
-        const response = await fetch(
-          `${env.apiBaseUrl}/v1/submissions/${submission.id}/events`,
-          {
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            signal: abort.signal,
-          },
-        );
-        if (!response.ok || !response.body) {
-          throw new Error(`Stream failed: ${response.status}`);
-        }
+  const follow = useCallback(
+    async (submissionId: string) => {
+      abortRef.current?.abort();
+      const abort = new AbortController();
+      abortRef.current = abort;
+      setState({ ...INITIAL, submissionId, isJudging: true });
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const frames = buffer.split('\n\n');
-          buffer = frames.pop() ?? '';
-          for (const frame of frames) {
-            const line = frame.trim();
-            if (!line.startsWith('data: ')) continue;
-            const event: JudgeEvent = JSON.parse(line.slice(6));
-            setState((s) => ({
-              ...s,
-              events: [...s.events, event],
-              verdict: event.kind === 'verdict' ? event : s.verdict,
-              isJudging: event.kind !== 'verdict' && event.kind !== 'error',
-              error:
-                event.kind === 'error'
-                  ? (event.message ?? 'Judge error')
-                  : s.error,
-            }));
-          }
-        }
+      try {
+        await stream(submissionId, abort);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setState((s) => ({
@@ -97,8 +131,8 @@ export function useJudgeStream() {
         }));
       }
     },
-    [],
+    [stream],
   );
 
-  return { ...state, submit, reset };
+  return { ...state, submit, follow, reset };
 }

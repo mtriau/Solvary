@@ -13,6 +13,7 @@ from app.models.user import User
 from app.repositories.problem_repository import ProblemRepository
 from app.repositories.submission_repository import SubmissionRepository
 from app.repositories.testcase_repository import TestCaseRepository
+from app.repositories.workspace_repository import MemberRepository, WorkspaceRepository
 from app.schemas.common import PaginatedResponse
 from app.schemas.submissions import (
     SubmissionCreate,
@@ -40,12 +41,16 @@ class SubmissionService:
         submission_repo: SubmissionRepository,
         problem_repo: ProblemRepository,
         testcase_repo: TestCaseRepository,
+        workspace_repo: WorkspaceRepository,
+        member_repo: MemberRepository,
         runtime: ExecutionRuntime,
         settings: Settings,
     ) -> None:
         self._submission_repo = submission_repo
         self._problem_repo = problem_repo
         self._testcase_repo = testcase_repo
+        self._workspace_repo = workspace_repo
+        self._member_repo = member_repo
         self._runtime = runtime
         self._settings = settings
 
@@ -65,6 +70,20 @@ class SubmissionService:
         problem = await self._problem_repo.get_by_id(data.problem_id)
         if not problem:
             raise NotFoundException(f"Problem {data.problem_id} not found")
+
+        # Workspace-tagged submission (M4 challenge attempt): submitter must
+        # be an editor+ member, and the workspace must be bound to this problem
+        if data.workspace_id:
+            workspace = await self._workspace_repo.get_by_id(data.workspace_id)
+            if not workspace:
+                raise NotFoundException(f"Workspace {data.workspace_id} not found")
+            member = await self._member_repo.get_by_workspace_and_user(
+                data.workspace_id, user.id
+            )
+            if member is None or member.role == "viewer":
+                raise ForbiddenException("Submitting requires editor access")
+            if workspace.problem_id != data.problem_id:
+                raise BadRequestException("Workspace is not bound to this problem")
 
         cases = await self._testcase_repo.list_by_problem(problem.id)
         if not cases:
@@ -132,6 +151,25 @@ class SubmissionService:
             next_cursor=next_cursor,
         )
 
+    async def list_for_workspace(
+        self,
+        user: User,
+        workspace_id: str,
+        cursor: str | None = None,
+        limit: int = 50,
+    ) -> PaginatedResponse[SubmissionResponse]:
+        """All members' submissions in a workspace — the shared attempt history."""
+        member = await self._member_repo.get_by_workspace_and_user(workspace_id, user.id)
+        if member is None and user.role != "admin":
+            raise ForbiddenException("Not a member of this workspace")
+        submissions, next_cursor = await self._submission_repo.list_paginated(
+            workspace_id=workspace_id, cursor=cursor, limit=limit
+        )
+        return PaginatedResponse(
+            items=[self._to_response(s) for s in submissions],
+            next_cursor=next_cursor,
+        )
+
     # ── SSE: replay-then-follow (§6.4) ─────────────────────────────
 
     async def stream_events(self, user: User, submission_id: str) -> AsyncIterator[dict]:
@@ -178,9 +216,17 @@ class SubmissionService:
         submission = await self._submission_repo.get_by_id(submission_id)
         if not submission:
             raise NotFoundException(f"Submission {submission_id} not found")
-        if submission.user_id != user.id and user.role != "admin":
-            raise ForbiddenException("Not your submission")
-        return submission
+        if submission.user_id == user.id or user.role == "admin":
+            return submission
+        # Workspace submissions are visible to every member — pair
+        # interviews share one verdict stream (M4)
+        if submission.workspace_id:
+            member = await self._member_repo.get_by_workspace_and_user(
+                submission.workspace_id, user.id
+            )
+            if member is not None:
+                return submission
+        raise ForbiddenException("Not your submission")
 
     @staticmethod
     def _to_response(s: Submission) -> SubmissionResponse:
