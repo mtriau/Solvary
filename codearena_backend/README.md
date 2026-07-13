@@ -44,6 +44,15 @@ Selected by `EXECUTION_PROVIDER` (env or `.env`; see `.env.example`):
   Why Piston and not Judge0: Judge0's isolate needs cgroup v1 and segfaults on modern
   Docker Desktop (cgroup v2). Design decision #5, amended v2.1.
 
+## Collaborative workspaces (M3)
+
+Live multi-user editing via Yjs CRDTs. The server speaks real y-protocol over
+`WS /ws/workspaces/{id}` (JWT rides the subprotocol), relays updates, persists
+snapshot + update log, and enforces owner/editor/viewer RBAC — viewers get a
+readOnly editor and the server drops (and resyncs) any doc update they send.
+File metadata is REST-authoritative; content is CRDT-only, keyed by file id.
+Try it: two browsers, same workspace, `/workspaces` — live cursors included.
+
 ## Tests
 
 ```powershell

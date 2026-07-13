@@ -62,3 +62,65 @@ export async function fetchSubmissions(
   const qs = problemId ? `?problem_id=${problemId}` : '';
   return apiClient.get(`/v1/submissions${qs}`);
 }
+
+// ── Workspaces (M3) ────────────────────────────────────────────────
+
+import type { MemberRole, Workspace, WorkspaceFile, WorkspaceMember } from '@/shared/types/api';
+
+export async function fetchWorkspaces(): Promise<Workspace[]> {
+  return apiClient.get('/v1/workspaces');
+}
+
+export async function fetchWorkspace(id: string): Promise<Workspace> {
+  return apiClient.get(`/v1/workspaces/${id}`);
+}
+
+export async function createWorkspace(data: {
+  name: string;
+  language: string;
+}): Promise<Workspace> {
+  return apiClient.post('/v1/workspaces', data);
+}
+
+export async function deleteWorkspace(id: string): Promise<void> {
+  return apiClient.delete(`/v1/workspaces/${id}`);
+}
+
+export async function fetchMembers(wsId: string): Promise<WorkspaceMember[]> {
+  return apiClient.get(`/v1/workspaces/${wsId}/members`);
+}
+
+export async function addMember(
+  wsId: string,
+  email: string,
+  role: Exclude<MemberRole, 'owner'>,
+): Promise<WorkspaceMember> {
+  return apiClient.post(`/v1/workspaces/${wsId}/members`, { email, role });
+}
+
+export async function removeMember(wsId: string, memberId: string): Promise<void> {
+  return apiClient.delete(`/v1/workspaces/${wsId}/members/${memberId}`);
+}
+
+export async function fetchFiles(wsId: string): Promise<WorkspaceFile[]> {
+  return apiClient.get(`/v1/workspaces/${wsId}/files`);
+}
+
+export async function createFile(
+  wsId: string,
+  path: string,
+): Promise<WorkspaceFile> {
+  return apiClient.post(`/v1/workspaces/${wsId}/files`, { path });
+}
+
+export async function renameFile(
+  wsId: string,
+  fileId: string,
+  path: string,
+): Promise<WorkspaceFile> {
+  return apiClient.patch(`/v1/workspaces/${wsId}/files/${fileId}`, { path });
+}
+
+export async function deleteFile(wsId: string, fileId: string): Promise<void> {
+  return apiClient.delete(`/v1/workspaces/${wsId}/files/${fileId}`);
+}

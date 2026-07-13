@@ -10,3 +10,4 @@ asyncpg>=0.30.0
 alembic>=1.14.0
 aiosqlite>=0.21.0
 httpx>=0.28.0
+pycrdt>=0.14.0

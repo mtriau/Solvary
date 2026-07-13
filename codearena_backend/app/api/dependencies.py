@@ -8,15 +8,23 @@ from app.config import Settings, get_settings
 from app.core.exceptions import ForbiddenException
 from app.models.user import User
 from app.repositories import mock_registry
+from app.repositories.doc_repository import DocRepository
 from app.repositories.problem_repository import ProblemRepository
 from app.repositories.submission_repository import SubmissionRepository
 from app.repositories.testcase_repository import TestCaseRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.workspace_repository import (
+    FileRepository,
+    MemberRepository,
+    WorkspaceRepository,
+)
 from app.services.auth_service import AuthService
+from app.services.collaboration.manager import get_collab_manager
 from app.services.problem_service import ProblemService
 from app.services.queue.runtime import ExecutionRuntime, get_runtime
 from app.services.submission_service import SubmissionService
 from app.services.user_service import UserService
+from app.services.workspace_service import WorkspaceService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -88,6 +96,48 @@ def get_submission_repository(
     return SQLAlchemySubmissionRepository(db)
 
 
+def get_workspace_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> WorkspaceRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_workspace_repo
+    from app.repositories.sqlalchemy_workspace_repository import (
+        SQLAlchemyWorkspaceRepository,
+    )
+
+    assert db is not None
+    return SQLAlchemyWorkspaceRepository(db)
+
+
+def get_member_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> MemberRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_member_repo
+    from app.repositories.sqlalchemy_workspace_repository import (
+        SQLAlchemyMemberRepository,
+    )
+
+    assert db is not None
+    return SQLAlchemyMemberRepository(db)
+
+
+def get_file_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> FileRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_file_repo
+    from app.repositories.sqlalchemy_workspace_repository import (
+        SQLAlchemyFileRepository,
+    )
+
+    assert db is not None
+    return SQLAlchemyFileRepository(db)
+
+
 # ── Service providers ─────────────────────────────────────────────
 
 
@@ -119,6 +169,37 @@ def get_submission_service(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SubmissionService:
     return SubmissionService(submission_repo, problem_repo, testcase_repo, runtime, settings)
+
+
+def get_doc_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> DocRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_doc_repo
+    from app.repositories.sqlalchemy_doc_repository import SQLAlchemyDocRepository
+
+    assert db is not None
+    return SQLAlchemyDocRepository(db)
+
+
+def get_workspace_service(
+    workspace_repo: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+    member_repo: Annotated[MemberRepository, Depends(get_member_repository)],
+    file_repo: Annotated[FileRepository, Depends(get_file_repository)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    doc_repo: Annotated[DocRepository, Depends(get_doc_repository)],
+) -> WorkspaceService:
+    # doc_repo shares the request session — doc writes must join the request
+    # transaction or they deadlock on SQLite's single-writer lock
+    return WorkspaceService(
+        workspace_repo,
+        member_repo,
+        file_repo,
+        user_repo,
+        get_collab_manager(),
+        doc_repo,
+    )
 
 
 # ── Auth dependencies ─────────────────────────────────────────────

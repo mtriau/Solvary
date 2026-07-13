@@ -7,6 +7,7 @@ from app.api.v1 import (
     routes_problems,
     routes_submissions,
     routes_users,
+    routes_workspaces,
 )
 
 api_router = APIRouter()
@@ -17,3 +18,4 @@ api_router.include_router(routes_users.router)
 api_router.include_router(routes_problems.router)
 api_router.include_router(routes_submissions.router)
 api_router.include_router(routes_execution.router)
+api_router.include_router(routes_workspaces.router)

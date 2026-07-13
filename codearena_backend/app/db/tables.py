@@ -6,13 +6,17 @@ in app/models/ — services work with domain models, repositories handle
 the conversion between ORM rows and domain objects.
 """
 
+from datetime import UTC, datetime
+
 from sqlalchemy import (
     JSON,
     Boolean,
+    DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -108,4 +112,100 @@ class SubmissionRow(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_submissions_user_created", "user_id", "created_at"),
         Index("ix_submissions_problem_verdict", "problem_id", "verdict"),
+    )
+
+
+class WorkspaceRow(Base, TimestampMixin):
+    __tablename__ = "workspaces"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    owner_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    language: Mapped[str] = mapped_column(String(30), nullable=False, default="python")
+    problem_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("problems.id", ondelete="SET NULL"), nullable=True
+    )
+
+    members: Mapped[list["WorkspaceMemberRow"]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    files: Mapped[list["WorkspaceFileRow"]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+
+
+class WorkspaceMemberRow(Base):
+    __tablename__ = "workspace_members"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # owner | editor | viewer
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    workspace: Mapped["WorkspaceRow"] = relationship(back_populates="members")
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_id", name="uq_members_workspace_user"),
+    )
+
+
+class WorkspaceFileRow(Base, TimestampMixin):
+    __tablename__ = "workspace_files"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    language: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    workspace: Mapped["WorkspaceRow"] = relationship(back_populates="files")
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "path", name="uq_files_workspace_path"),
+    )
+
+
+class DocSnapshotRow(Base):
+    __tablename__ = "doc_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    state: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    update_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        Index("ix_doc_snapshots_workspace_created", "workspace_id", "created_at"),
+    )
+
+
+class DocUpdateRow(Base):
+    __tablename__ = "doc_updates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "seq", name="uq_doc_updates_workspace_seq"),
     )

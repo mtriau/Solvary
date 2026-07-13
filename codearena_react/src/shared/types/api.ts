@@ -92,3 +92,32 @@ export interface JudgeEvent {
   passed?: number;
   total?: number;
 }
+
+// ── Workspaces (M3) ────────────────────────────────────────────────
+
+export type MemberRole = 'owner' | 'editor' | 'viewer';
+
+export interface Workspace {
+  id: string;
+  name: string;
+  owner_id: string;
+  language: string;
+  problem_id: string | null;
+  my_role: MemberRole;
+  created_at: string;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  avatar_url: string;
+  role: MemberRole;
+}
+
+export interface WorkspaceFile {
+  id: string;
+  path: string;
+  language: string | null;
+}

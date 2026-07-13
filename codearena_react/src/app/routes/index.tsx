@@ -10,6 +10,7 @@ const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'));
 const ProblemsPage = lazy(() => import('@/pages/problems/ProblemsPage'));
 const ProblemPage = lazy(() => import('@/pages/problems/ProblemPage'));
 const WorkspacesPage = lazy(() => import('@/pages/workspaces/WorkspacesPage'));
+const WorkspacePage = lazy(() => import('@/pages/workspaces/WorkspacePage'));
 const NotFoundPage = lazy(() => import('@/pages/not-found/NotFoundPage'));
 
 export const router = createBrowserRouter([
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
               { path: 'problems', element: <ProblemsPage /> },
               { path: 'problems/:slug', element: <ProblemPage /> },
               { path: 'workspaces', element: <WorkspacesPage /> },
+              { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
             ],
           },
         ],

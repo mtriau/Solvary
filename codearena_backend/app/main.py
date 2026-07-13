@@ -78,6 +78,11 @@ def create_app() -> FastAPI:
     # Routes
     application.include_router(api_router, prefix=settings.api_prefix)
 
+    # Collaboration WebSocket lives at root (/ws/...), not under /api (design §5)
+    from app.api.v1 import ws_collaboration
+
+    application.include_router(ws_collaboration.router)
+
     return application
 
 
