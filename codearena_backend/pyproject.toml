@@ -40,3 +40,4 @@ ignore = ["N818", "UP046"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["piston: integration tests requiring a running Piston engine"]

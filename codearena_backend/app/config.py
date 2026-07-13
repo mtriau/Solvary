@@ -15,10 +15,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./codearena.db"
     use_mock_db: bool = False
 
-    # Execution provider: "mock", "judge0"
+    # Execution provider: "mock", "piston"
     execution_provider: str = "mock"
-    judge0_base_url: str = "http://localhost:2358"
-    judge0_auth_token: str = ""
+    piston_base_url: str = "http://localhost:2000"
     execution_max_code_bytes: int = 64_000
     execution_default_time_limit_s: float = 5.0
     execution_default_memory_kb: int = 256_000

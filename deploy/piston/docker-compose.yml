@@ -1,0 +1,29 @@
+# Piston — self-hosted code execution engine (CodeArena M2 sandbox).
+#
+#   docker compose up -d
+#   docker exec piston_api cli/index.js ppman install python
+#   docker exec piston_api cli/index.js ppman install node
+#
+# API on http://localhost:2000. Requires a cgroup-v2 host (Docker Desktop default).
+# Language packages persist in the named volume across restarts.
+
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: piston_api
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "2000:2000"
+    environment:
+      # Piston rejects per-request timeouts above these caps (default 3000ms);
+      # problems may set time_limit_s up to 15s
+      PISTON_RUN_TIMEOUT: 15000
+      PISTON_COMPILE_TIMEOUT: 15000
+    volumes:
+      - piston_packages:/piston/packages
+    tmpfs:
+      - /tmp:exec
+
+volumes:
+  piston_packages:

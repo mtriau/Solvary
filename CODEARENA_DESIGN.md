@@ -1,4 +1,4 @@
-# CodeArena — Design Document (v2)
+# CodeArena — Design Document (v2.1)
 
 A LeetCode-style coding-challenge platform that also supports **live multi-person
 collaborative workspaces**. Built as a new backend + frontend that reuses MattChat's
@@ -8,8 +8,17 @@ Status: **design locked, pre-implementation.** This doc is the contract we build
 
 ## Changelog
 
+**v2.1 (2026-07-10)** — decision #5 amended during M2: **Piston replaces Judge0** as the
+real execution provider. Empirical grounds: Judge0 1.13.1's sandbox (isolate) requires
+cgroup v1 and segfaults on this dev machine's Docker Desktop (cgroup v2, v1 fallback
+removed); verified directly with `isolate --run` in the official image. Piston requires
+cgroup v2 — matching the environment — and its API (raw stdout/time/memory per run,
+no built-in output comparison) actually fits our worker-side-checker architecture
+better. Judge0 remains a valid deploy-time alternative on cgroup-v1 hosts behind the
+same `BaseExecutor` interface. Config: `judge0_*` keys replaced by `piston_base_url`.
+
 **v2 (2026-07-10)** — revised after design review. Load-bearing decisions unchanged
-(CRDT/Yjs, Judge0-behind-`BaseExecutor`, SSE transport, workspace-unifies-everything,
+(CRDT/Yjs, sandbox-behind-`BaseExecutor`, SSE transport, workspace-unifies-everything,
 milestone ladder). Fixes cluster at the CRDT↔REST seams and the streamed↔durable gap:
 
 - **Files:** killed the dual source of truth. File metadata is REST-authoritative;
@@ -54,11 +63,11 @@ milestone ladder). Fixes cluster at the CRDT↔REST seams and the streamed↔dur
    `StreamingResponse`, JWT auth via `get_current_user`. (One deliberate deviation:
    pagination — see §3.3.)
 3. **Untrusted user code never runs in the API process.** The **executor** is the
-   isolation boundary: with Judge0, code runs inside Judge0's sandbox and the worker is
+   isolation boundary: with Piston, code runs inside Piston's sandbox and the worker is
    just an HTTP client that may safely live in-process. A separate worker *process* is
    only required if we ever build a DIY-Docker executor.
 4. **The two new subsystems (realtime collab, code execution) hide behind clean
-   interfaces** so they can swap implementations (in-memory ↔ Redis, Mock ↔ Judge0) and
+   interfaces** so they can swap implementations (in-memory ↔ Redis, Mock ↔ Piston) and
    can't destabilize the CRUD core.
 5. **The CRDT holds document *content* only.** Everything the server must authorize,
    list, or query — file metadata, membership, verdicts — is REST/DB-authoritative.
@@ -74,12 +83,12 @@ milestone ladder). Fixes cluster at the CRDT↔REST seams and the streamed↔dur
 | 2 | Collab backend | **FastAPI WebSocket speaking real y-protocol** (sync + awareness), relaying opaque updates | Stays in the Python stack; the stock `y-websocket` client provider works unmodified. Half-compatible custom framing is the worst spot. Hocuspocus deferred. |
 | 3 | Doc granularity | **One Yjs doc per workspace**: `Y.Map<file_id, Y.Text>` | One room, atomic presence. Keyed by **file id**, not path — rename preserves content identity and concurrent-edit safety. File create/rename/delete go through REST (§7.1), not CRDT map ops. |
 | 4 | WS scaling | **Interface with `InMemoryBackplane` (MVP) + `RedisBackplane`** | Mirrors `use_mock_db` swap. Single instance ships first. |
-| 5 | Sandbox | **`MockExecutor` (dev) + `Judge0Executor` (prod)** behind `BaseExecutor` | Judge0 = fastest path to a real multi-language, resource-capped judge. DIY Docker/Firecracker deferred behind the same interface. |
+| 5 | Sandbox | **`MockExecutor` (dev) + `PistonExecutor` (real)** behind `BaseExecutor` *(amended v2.1)* | Piston: multi-language, resource-capped, cgroup-v2-native (Judge0's isolate needs cgroup v1 — segfaults on modern Docker Desktop). Returns raw stdout, which fits our worker-side checkers. Judge0/DIY Docker/Firecracker remain alternatives behind the same interface. |
 | 6 | Execution flow | **Async job queue + workers**; in-process async tasks for M1–M2 | Decouples expensive work from the request thread; enables streaming progress. Isolation comes from the executor (§1.3), not the worker's process boundary. |
 | 7 | Judge protocol | **stdin/stdout + built-in checker enum first**, evolve to function-signature drivers | Language-agnostic, robust, easy to author. Free-form checker code is an RCE vector under third-party authoring — deferred until checkers run sandboxed. |
 | 8 | Result transport | **SSE, replay-then-follow** | Reuses MattChat's `StreamingResponse` + fetch-streaming pattern; replay fixes the subscribe-after-fire race and gives reconnect for free. |
 | 9 | Editor | **Monaco + `y-monaco`** | VS Code core; crowd-pleaser for a coding platform. CodeMirror is the fallback. |
-| 10 | Launch languages | **Python + JavaScript** MVP; add C++/Java after | Two runtimes to harden first; more is config in Judge0. |
+| 10 | Launch languages | **Python + JavaScript** MVP; add C++/Java after | Two runtimes to harden first; more is a runtime package install in Piston. |
 | 11 | AuthZ | **JWT (reused) + `User.role` admin flag + Workspace RBAC** (`owner`/`editor`/`viewer`) | Membership/role authorization MattChat skipped, plus the admin concept problem authoring requires. |
 | 12 | AI tie-in | **Reuse `matt_llm/serve.py`** as hint/explain/review assistant | "Explain this problem," "Why did test 3 fail?" — reuses `BaseLLMService` + SSE. |
 | 13 | Server-side CRDT | **`pycrdt`, adopted at M3**, used narrowly | Required for doc birth (seeding starter code without a first-client race) and snapshot compaction. "Client sends buffer" remains the Run path only. |
@@ -101,9 +110,8 @@ switching mid-attempt (§4 Workspace note).
 
 ```python
 # execution
-execution_provider: str = "mock"          # "mock" | "judge0"
-judge0_base_url: str = "http://localhost:2358"
-judge0_auth_token: str = ""
+execution_provider: str = "mock"          # "mock" | "piston"
+piston_base_url: str = "http://localhost:2000"
 execution_max_code_bytes: int = 64_000
 execution_default_time_limit_s: float = 5.0
 execution_default_memory_kb: int = 256_000
@@ -137,7 +145,7 @@ app/
         base.py                    # BaseExecutor, ExecJob, ExecEvent, Verdict
         checkers.py                # built-in checker enum implementations
         mock_executor.py
-        judge0_executor.py
+        piston_executor.py
         factory.py                 # create_executor(settings)
      collaboration/
         manager.py                 # CollaborationManager (rooms, relay, persistence)
@@ -149,7 +157,7 @@ app/
         job_queue.py               # BaseJobQueue + InMemory + Redis impls
         worker.py                  # judge worker loop — async task in-process for
                                    # M1–M2; shaped to run standalone if a local
-                                   # (non-Judge0) executor ever exists
+                                   # (non-Piston) executor ever exists
   api/v1/
      routes_problems.py routes_submissions.py routes_workspaces.py
      routes_execution.py           # POST run + SSE event streams
@@ -361,19 +369,19 @@ class BaseExecutor(ABC):
     @abstractmethod
     def execute(self, job: ExecJob) -> AsyncIterator[ExecEvent]: ...
 ```
-`create_executor(settings)` picks `MockExecutor` / `Judge0Executor` — same shape as
+`create_executor(settings)` picks `MockExecutor` / `PistonExecutor` — same shape as
 `create_llm_service`.
 
 **Per-case events are best effort.** Streaming `case_started`/`case_result` per test
-implies one-at-a-time submission (2×N round-trips against Judge0). A `Judge0Executor`
+implies one-at-a-time submission (N round-trips against Piston). An executor
 that batches and polls — emitting coarser progress — is contract-conformant; only
 `queued → … → verdict` ordering is guaranteed.
 
 ### 6.2 Flow
 1. `POST /submissions` → persist `queued` → `job_queue.enqueue(ExecJob)` → return id.
 2. **Worker = async task(s) in the API process (M1–M2).** The executor is the isolation
-   boundary: MockExecutor runs no real code; Judge0Executor is an HTTP client and the
-   untrusted code runs inside Judge0's sandbox. `worker.py` is shaped to run standalone
+   boundary: MockExecutor runs no real code; PistonExecutor is an HTTP client and the
+   untrusted code runs inside Piston's sandbox. `worker.py` is shaped to run standalone
    (own entrypoint, repo access via factory) but a separate process is only *required*
    if a local-execution (DIY Docker) executor ever exists.
 3. Worker consumes `executor.execute(job)`; for judge mode compares each case via its
@@ -406,7 +414,7 @@ durability is a Submission.
 Per-user concurrency (`execution_user_concurrency`) + rate limit
 (`execution_user_rate_per_min`) enforced by the `check_execution_quota` dependency
 (§3.1), `execution_max_code_bytes`, per-case wall-clock cap, `--network=none` /
-non-root / read-only FS enforced by Judge0.
+non-root / read-only FS enforced by Piston (isolate).
 
 ---
 
@@ -496,7 +504,7 @@ mock repos:
   snapshot+update-log sync, and `0x03` broadcast on file mutation — no browser needed.
 - **RBAC:** table-driven tests per endpoint × role (owner/editor/viewer/non-member/admin).
 - **Executor conformance:** a shared contract-test suite run against `MockExecutor`
-  (always) and `Judge0Executor` (behind an integration marker, needs Judge0 up) —
+  (always) and `PistonExecutor` (behind an integration marker, needs Piston up) —
   guarantees event-ordering invariants of §6.1.
 - **E2E (per milestone DoD):** M1 = solve a problem headlessly via API; M3 = two
   Playwright browsers converge on one document.
@@ -513,9 +521,9 @@ mock repos:
   problem/submission UI. *Done when* you can solve a problem against sample+hidden tests
   with a streamed verdict that survives a page reload mid-judge. **Ships as a LeetCode
   clone (mock-judged).**
-- **M2 — Judge0.** Swap `MockExecutor` → `Judge0Executor`; Python + JS real sandboxing;
+- **M2 — Piston.** Swap `MockExecutor` → `PistonExecutor`; Python + JS real sandboxing;
   abuse controls live. *Done when* real code runs isolated with TLE/MLE enforced and the
-  executor contract tests pass against Judge0.
+  executor contract tests pass against Piston.
 - **M3 — Collaborative workspace.** Real WS `CollaborationManager` speaking y-protocol +
   `doc_store` (pycrdt birth/compaction) + Yjs + Monaco + presence + RBAC + REST file
   authority. *Done when* two browsers edit one workspace live with visible cursors, a
@@ -533,7 +541,7 @@ mock repos:
 1. **Layout:** siblings `codearena_backend/` + `codearena_react/` next to the MattChat
    dirs; `git init` the `MattChat/` folder as one monorepo.
 2. **Job queue:** in-process `asyncio.Queue` for M1–M2 (consistent with §6.2); Redis
-   queue arrives with the Redis backplane in phase 2 (Judge0 brings Redis anyway).
+   queue arrives with the Redis backplane in phase 2.
 3. **Authoring:** seed scripts (Python/JSON definitions + loader) for MVP. Admin API
    exists; authoring UI deferred to phase 2.
 4. **Judge protocol:** stdin/stdout-first confirmed; function-signature drivers are
