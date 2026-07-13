@@ -27,3 +27,6 @@ checkpoints/
 # OS / editor
 .DS_Store
 Thumbs.db
+*.db-shm
+*.db-wal
+!.env.example
