@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
-    if not settings.use_mock_db:
-        # Import tables so they register with Base.metadata
+    if not settings.use_mock_db and settings.environment != "production":
+        # Dev convenience only — production is migrations-only (alembic
+        # upgrade head runs before the server starts; see Dockerfile).
+        # create_all racing alembic has bitten us twice in dev already.
         import app.db.tables  # noqa: F401
         from app.db.base import Base
         from app.db.engine import engine

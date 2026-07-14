@@ -31,3 +31,4 @@ Thumbs.db
 *.db-wal
 !.env.example
 solvary_test.db*
+deploy/.env

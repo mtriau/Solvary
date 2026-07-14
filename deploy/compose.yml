@@ -1,0 +1,76 @@
+# Solvary — full production stack.
+#
+#   cp .env.example .env        # set SECRET_KEY + POSTGRES_PASSWORD
+#   docker compose up -d --build
+#   ./piston/install-runtimes.sh              # one-time: language runtimes
+#   docker compose exec backend python -m scripts.seed_admin
+#   docker compose exec backend python -m scripts.seed_problems
+#
+# App on http://localhost:8080. Put TLS in front (Caddy/Traefik/ALB) for
+# real deployments — the refresh cookie is Secure in production and
+# requires HTTPS end-to-end.
+#
+# Scaling note: backend is single-replica by design until the Redis
+# queue/backplane lands (in-process rooms, SSE broker, job queue).
+
+name: solvary
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: solvary
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: solvary
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solvary"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  piston:
+    image: ghcr.io/engineer-man/piston
+    restart: unless-stopped
+    privileged: true
+    environment:
+      PISTON_RUN_TIMEOUT: 15000
+      PISTON_COMPILE_TIMEOUT: 15000
+    volumes:
+      - piston_packages:/piston/packages
+    tmpfs:
+      - /tmp:exec
+
+  backend:
+    build: ../solvary_backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      SECRET_KEY: ${SECRET_KEY:?set in .env}
+      DATABASE_URL: postgresql+asyncpg://solvary:${POSTGRES_PASSWORD}@db:5432/solvary
+      EXECUTION_PROVIDER: piston
+      PISTON_BASE_URL: http://piston:2000
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      piston:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ../solvary_react
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  pgdata:
+  piston_packages:

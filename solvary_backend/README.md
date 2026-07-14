@@ -21,6 +21,29 @@ python -m venv .venv
 .venv\Scripts\python -m scripts.seed_problems   # two-sum, fizzbuzz, mean-of-list
 ```
 
+## Deploy (Docker)
+
+The full production stack (Postgres 16 + Piston + backend + nginx frontend)
+lives in [`../deploy/compose.yml`](../deploy/compose.yml):
+
+```powershell
+cd ..\deploy
+cp .env.example .env          # set SECRET_KEY + POSTGRES_PASSWORD
+docker compose up -d --build
+# one-time: language runtimes (compose network — piston is not host-exposed)
+docker compose exec backend python -c "import httpx; [print(httpx.post('http://piston:2000/api/v2/packages', json={'language':l,'version':v}, timeout=600).text) for l,v in [('python','3.12.0'),('node','20.11.1')]]"
+docker compose exec backend python -m scripts.seed_admin
+docker compose exec backend python -m scripts.seed_problems
+```
+
+App on http://localhost:8080. Production posture baked in: migrations run
+before serve (lifespan create_all is disabled under ENVIRONMENT=production),
+non-root containers, `/api/ready` reports per-dependency health (DB +
+Piston) for orchestrator traffic gating, nginx proxies SSE unbuffered and
+upgrades `/ws`. Put TLS in front for real deployments — the refresh cookie
+is `Secure` in production. Backend is single-replica until the Redis
+queue/backplane lands.
+
 ## Authentication
 
 - Access tokens are short-lived JWTs; a **refresh token** (httpOnly cookie,
