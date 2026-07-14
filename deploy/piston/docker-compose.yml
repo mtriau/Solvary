@@ -1,4 +1,4 @@
-# Piston — self-hosted code execution engine (CodeArena M2 sandbox).
+# Piston — self-hosted code execution engine (Solvary M2 sandbox).
 #
 #   docker compose up -d
 #   docker exec piston_api cli/index.js ppman install python
