@@ -11,6 +11,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import ensure_two_sum
+
 ADMIN = {"email": "admin@solvary.dev", "password": "admin123"}
 
 
@@ -35,11 +37,10 @@ def _auth(token: str) -> dict:
 
 
 async def _submit(client: AsyncClient, token: str, code: str) -> str:
-    problems = (await client.get("/api/v1/problems?q=Two+Sum")).json()["items"]
-    assert problems, "seeded problem missing — run scripts.seed_problems"
+    problem = await ensure_two_sum(client)
     resp = await client.post(
         "/api/v1/submissions",
-        json={"problem_id": problems[0]["id"], "language": "python", "code": code},
+        json={"problem_id": problem["id"], "language": "python", "code": code},
         headers=_auth(token),
     )
     assert resp.status_code == 201, resp.text
@@ -167,10 +168,10 @@ async def test_adhoc_run_stream(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_unsupported_language_rejected(client: AsyncClient):
     token = await _register(client)
-    problems = (await client.get("/api/v1/problems")).json()["items"]
+    problem = await ensure_two_sum(client)
     resp = await client.post(
         "/api/v1/submissions",
-        json={"problem_id": problems[0]["id"], "language": "cobol", "code": "x"},
+        json={"problem_id": problem["id"], "language": "cobol", "code": "x"},
         headers=_auth(token),
     )
     assert resp.status_code == 400

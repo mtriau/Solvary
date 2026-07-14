@@ -3,6 +3,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import ensure_two_sum
+
 ADMIN = {"email": "admin@solvary.dev", "password": "admin123"}
 
 
@@ -27,6 +29,7 @@ def _auth(token: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_list_problems_public(client: AsyncClient):
+    await ensure_two_sum(client)
     resp = await client.get("/api/v1/problems")
     assert resp.status_code == 200
     items = resp.json()["items"]
@@ -37,6 +40,7 @@ async def test_list_problems_public(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_get_problem_detail_hides_hidden_cases(client: AsyncClient):
+    await ensure_two_sum(client)
     resp = await client.get("/api/v1/problems/two-sum")
     assert resp.status_code == 200
     body = resp.json()
@@ -73,8 +77,7 @@ async def test_problem_create_requires_admin(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_testcases_admin_only(client: AsyncClient):
-    problems = (await client.get("/api/v1/problems?q=Two+Sum")).json()["items"]
-    prob_id = problems[0]["id"]
+    prob_id = (await ensure_two_sum(client))["id"]
 
     user_token = await _register_user(client)
     resp = await client.get(f"/api/v1/problems/{prob_id}/testcases", headers=_auth(user_token))

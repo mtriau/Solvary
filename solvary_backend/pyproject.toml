@@ -41,3 +41,7 @@ ignore = ["N818", "UP046"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["piston: integration tests requiring a running Piston engine"]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]

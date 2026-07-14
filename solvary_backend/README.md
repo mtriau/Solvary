@@ -68,4 +68,20 @@ Yjs awareness). Shared history: `GET /v1/submissions?workspace_id=...`.
 .venv\Scripts\python -m ruff check app scripts tests
 ```
 
+Tests are fully isolated: they run against `solvary_test.db` (schema rebuilt
+each session, admin seeded by conftest) and never touch the dev database.
 Piston integration tests auto-skip when no engine is reachable on :2000.
+
+To run the suite against Postgres (what CI does):
+
+```powershell
+docker run -d --name solvary-pg -e POSTGRES_USER=solvary -e POSTGRES_PASSWORD=solvary -e POSTGRES_DB=solvary_test -p 5433:5432 postgres:16
+$env:TEST_DATABASE_URL = "postgresql+asyncpg://solvary:solvary@localhost:5433/solvary_test"
+.venv\Scripts\python -m pytest -q
+```
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push/PR: backend ruff + pytest on
+SQLite, the full suite plus the Alembic migration chain on Postgres 16, and
+frontend eslint + build.

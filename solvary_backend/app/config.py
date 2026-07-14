@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     database_url: str = "sqlite+aiosqlite:///./solvary.db"
     use_mock_db: bool = False
+    # Tests set this: fresh connection per checkout, so pytest's per-test
+    # event loops never share a pooled (loop-bound) asyncpg/aiosqlite conn
+    db_null_pool: bool = False
 
     # Execution provider: "mock", "piston"
     execution_provider: str = "mock"

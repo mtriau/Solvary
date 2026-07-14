@@ -19,5 +19,19 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Experimental React-Compiler-era rules; they flag the external-store
+      // subscription patterns our Yjs/awareness integration is built on
+      // (setState inside provider event-effects, Y.Doc construction in
+      // effects). Revisit if/when we adopt the React Compiler.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/refs': 'off',
+      // HMR-granularity hint, not a correctness issue; constant exports
+      // (route lazy() consts, context hooks) are idiomatic here
+      'react-refresh/only-export-components': [
+        'warn',
+        { allowConstantExport: true },
+      ],
+    },
   },
 ])

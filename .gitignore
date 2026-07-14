@@ -30,3 +30,4 @@ Thumbs.db
 *.db-shm
 *.db-wal
 !.env.example
+solvary_test.db*
