@@ -10,6 +10,7 @@ from pycrdt import Doc, Map, Text
 from app.config import get_settings
 from app.repositories.doc_repository import MockDocRepository
 from app.services.collaboration import doc_store, sync
+from app.services.collaboration.backplane import InMemoryBackplane
 from app.services.collaboration.manager import CollaborationManager
 
 
@@ -53,7 +54,7 @@ def manager(repo) -> CollaborationManager:
     async def provider():
         yield repo
 
-    return CollaborationManager(provider, get_settings())
+    return CollaborationManager(provider, get_settings(), InMemoryBackplane())
 
 
 async def _connect(manager, ws_id, socket, user_id, role):

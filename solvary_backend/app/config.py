@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     execution_user_concurrency: int = 2  # concurrent jobs per user
     execution_user_rate_per_min: int = 30
 
+    # Job queue + SSE broker + execution quota: "memory" (single instance)
+    # or "redis" (shared across replicas)
+    queue_backend: str = "memory"
+
     # Realtime collaboration backplane: "memory", "redis"
     realtime_backplane: str = "memory"
     redis_url: str = "redis://localhost:6379/0"

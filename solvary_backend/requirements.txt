@@ -11,3 +11,4 @@ alembic>=1.14.0
 aiosqlite>=0.21.0
 httpx>=0.28.0
 pycrdt>=0.14.0
+redis>=5.0

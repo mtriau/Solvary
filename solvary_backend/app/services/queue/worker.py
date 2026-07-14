@@ -23,9 +23,9 @@ from contextlib import AbstractAsyncContextManager
 from app.repositories.submission_repository import SubmissionRepository
 from app.services.execution.base import BaseExecutor, ExecEvent, ExecJob
 from app.services.execution.checkers import run_checker
-from app.services.queue.broker import EventBroker
+from app.services.queue.broker import BaseEventBroker
 from app.services.queue.job_queue import BaseJobQueue
-from app.services.queue.quota import QuotaTracker
+from app.services.queue.quota import BaseQuotaTracker
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +44,10 @@ class JudgeWorker:
     def __init__(
         self,
         queue: BaseJobQueue,
-        broker: EventBroker,
+        broker: BaseEventBroker,
         executor: BaseExecutor,
         repo_provider: RepoProvider,
-        quota: QuotaTracker,
+        quota: BaseQuotaTracker,
     ) -> None:
         self._queue = queue
         self._broker = broker
@@ -64,7 +64,7 @@ class JudgeWorker:
                 logger.exception("Job %s failed with internal error", job.id)
                 await self._finalize_internal_error(job)
             finally:
-                self._quota.release(job.user_id)
+                await self._quota.release(job.user_id)
 
     # ── processing ─────────────────────────────────────────────────
 
@@ -78,10 +78,10 @@ class JudgeWorker:
         """Ad-hoc run: pass events through; no checking, no persistence."""
         async for event in self._executor.execute(job):
             if event.kind == "error":
-                self._publish(job, event)
+                await self._publish(job, event)
                 return
-            self._publish(job, event)
-        self._publish(job, ExecEvent(kind="verdict", verdict="finished"))
+            await self._publish(job, event)
+        await self._publish(job, ExecEvent(kind="verdict", verdict="finished"))
 
     async def _process_judge(self, job: ExecJob) -> None:
         hidden = {c.ordinal for c in job.cases if not c.is_sample}
@@ -93,7 +93,7 @@ class JudgeWorker:
         cases_seen = 0
 
         await self._persist(job, verdict="running", results=results, passed=passed, total=total)
-        self._publish(job, ExecEvent(kind="queued"))
+        await self._publish(job, ExecEvent(kind="queued"))
 
         agen = self._executor.execute(job)
         try:
@@ -103,12 +103,12 @@ class JudgeWorker:
                     verdict = event.status or "internal_error"
                     if verdict == "compile_error":
                         failure_verdict = "compile_error"
-                        self._publish(job, event)
+                        await self._publish(job, event)
                         break
                     raise RuntimeError(event.message or "executor error")
 
                 if event.kind != "case_result":
-                    self._publish(job, event, hidden)
+                    await self._publish(job, event, hidden)
                     continue
 
                 # ── a case finished: check it ──────────────────────
@@ -138,7 +138,7 @@ class JudgeWorker:
                 await self._persist(
                     job, verdict="running", results=results, passed=passed, total=total
                 )
-                self._publish(job, event, hidden)
+                await self._publish(job, event, hidden)
 
                 # §6.3: after a failure, skip remaining hidden cases but let
                 # remaining samples run (cases are ordered samples-first)
@@ -162,7 +162,7 @@ class JudgeWorker:
             runtime_ms=runtime_ms,
             memory_kb=memory_kb,
         )
-        self._publish(
+        await self._publish(
             job,
             ExecEvent(
                 kind="verdict",
@@ -176,8 +176,10 @@ class JudgeWorker:
 
     # ── helpers ────────────────────────────────────────────────────
 
-    def _publish(self, job: ExecJob, event: ExecEvent, hidden: set[int] | None = None) -> None:
-        self._broker.publish(job.id, event.to_public_dict(hidden))
+    async def _publish(
+        self, job: ExecJob, event: ExecEvent, hidden: set[int] | None = None
+    ) -> None:
+        await self._broker.publish(job.id, event.to_public_dict(hidden))
 
     async def _persist(
         self,
@@ -214,7 +216,7 @@ class JudgeWorker:
                         await repo.update(submission)
         except Exception:
             logger.exception("Failed to persist internal_error for %s", job.id)
-        self._publish(
+        await self._publish(
             job,
             ExecEvent(kind="error", status="internal_error", message="Internal judge error"),
         )

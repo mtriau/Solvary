@@ -26,6 +26,7 @@ from pycrdt import Doc
 
 from app.config import Settings
 from app.services.collaboration import doc_store, sync
+from app.services.collaboration.backplane import BaseBackplane
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +59,12 @@ class Room:
 
 
 class CollaborationManager:
-    def __init__(self, doc_repo_provider, settings: Settings) -> None:
+    def __init__(
+        self, doc_repo_provider, settings: Settings, backplane: BaseBackplane
+    ) -> None:
         self._doc_repo_provider = doc_repo_provider
         self._settings = settings
+        self._backplane = backplane
         self._rooms: dict[str, Room] = {}
         self._rooms_lock = asyncio.Lock()
 
@@ -74,6 +78,11 @@ class CollaborationManager:
                     doc, seq = await doc_store.load(repo, workspace_id)
                 room = Room(workspace_id=workspace_id, doc=doc, seq=seq)
                 self._rooms[workspace_id] = room
+
+                async def on_remote(kind: str, payload: bytes, remote_seq: int) -> None:
+                    await self._on_remote(room, kind, payload, remote_seq)
+
+                await self._backplane.join(workspace_id, on_remote)
             return room
 
     async def _maybe_unload(self, room: Room) -> None:
@@ -81,10 +90,14 @@ class CollaborationManager:
             if not room.conns and self._rooms.get(room.workspace_id) is room:
                 if room.updates_since_compact > 0:
                     with suppress(Exception):
-                        async with self._doc_repo_provider() as repo:
-                            await doc_store.compact(
-                                repo, room.workspace_id, room.doc, room.seq
-                            )
+                        if await self._backplane.try_lock(
+                            f"compact:{room.workspace_id}", 30
+                        ):
+                            async with self._doc_repo_provider() as repo:
+                                await doc_store.compact(
+                                    repo, room.workspace_id, room.doc, room.seq
+                                )
+                await self._backplane.leave(room.workspace_id)
                 del self._rooms[room.workspace_id]
 
     # ── connection lifecycle ───────────────────────────────────────
@@ -170,9 +183,10 @@ class CollaborationManager:
 
             async with room.lock:
                 room.doc.apply_update(payload)
-                room.seq += 1
-                seq = room.seq
+                seq = await self._backplane.next_seq(room.workspace_id, room.seq)
+                room.seq = seq
                 await self._broadcast(room, sync.encode_sync_update(payload), exclude=conn.id)
+            await self._backplane.publish(room.workspace_id, "update", payload, seq)
             await self._persist_update(room, seq, payload)
             return
 
@@ -180,9 +194,30 @@ class CollaborationManager:
             conn.last_awareness = payload
             async with room.lock:
                 await self._broadcast(room, sync.encode_awareness(payload), exclude=conn.id)
+            await self._backplane.publish(room.workspace_id, "awareness", payload)
             return
 
         logger.debug("Ignoring unknown message type %d", msg_type)
+
+    # ── frames from other instances (Redis backplane) ─────────────
+
+    async def _on_remote(self, room: Room, kind: str, payload: bytes, seq: int) -> None:
+        """A frame produced on another instance: apply to our room doc
+        (so late joiners here sync correctly) and forward to local sockets.
+        Never persisted — the origin instance already did that."""
+        if kind == "update":
+            async with room.lock:
+                room.doc.apply_update(payload)
+                room.seq = max(room.seq, seq)
+                await self._broadcast(room, sync.encode_sync_update(payload))
+            return
+        if kind == "awareness":
+            async with room.lock:
+                await self._broadcast(room, sync.encode_awareness(payload))
+            return
+        if kind == "files":
+            async with room.lock:
+                await self._broadcast(room, sync.encode_files_changed())
 
     # ── server-side structure edits (REST file ops, §7.1.6) ───────
 
@@ -202,9 +237,10 @@ class CollaborationManager:
                 before = room.doc.get_state()
                 edit_fn(room.doc)
                 update = room.doc.get_update(before)
-                room.seq += 1
-                seq = room.seq
+                seq = await self._backplane.next_seq(room.workspace_id, room.seq)
+                room.seq = seq
                 await self._broadcast(room, sync.encode_sync_update(update))
+            await self._backplane.publish(workspace_id, "update", update, seq)
             if repo is not None:
                 await doc_store.append(repo, workspace_id, seq, update)
                 room.updates_since_compact += 1
@@ -218,21 +254,31 @@ class CollaborationManager:
             doc, seq = await doc_store.load(repo, workspace_id)
             before = doc.get_state()
             edit_fn(doc)
-            await doc_store.append(repo, workspace_id, seq + 1, doc.get_update(before))
+            update = doc.get_update(before)
+            next_seq = await self._backplane.next_seq(workspace_id, seq)
+            await doc_store.append(repo, workspace_id, next_seq, update)
+            await self._backplane.publish(workspace_id, "update", update, next_seq)
+            await self._backplane.publish(workspace_id, "files", b"")
             return
         async with self._doc_repo_provider() as repo_cm:
             doc, seq = await doc_store.load(repo_cm, workspace_id)
             before = doc.get_state()
             edit_fn(doc)
-            await doc_store.append(repo_cm, workspace_id, seq + 1, doc.get_update(before))
+            update = doc.get_update(before)
+            next_seq = await self._backplane.next_seq(workspace_id, seq)
+            await doc_store.append(repo_cm, workspace_id, next_seq, update)
+            await self._backplane.publish(workspace_id, "update", update, next_seq)
+            await self._backplane.publish(workspace_id, "files", b"")
 
     async def notify_files_changed(self, workspace_id: str) -> None:
-        """File metadata changed via REST → tell clients to refetch."""
+        """File metadata changed via REST → tell clients to refetch,
+        on this instance and every other one."""
         async with self._rooms_lock:
             room = self._rooms.get(workspace_id)
         if room is not None:
             async with room.lock:
                 await self._broadcast(room, sync.encode_files_changed())
+        await self._backplane.publish(workspace_id, "files", b"")
 
     # ── plumbing ───────────────────────────────────────────────────
 
@@ -242,8 +288,9 @@ class CollaborationManager:
         room.updates_since_compact += 1
         if room.updates_since_compact >= self._settings.ws_snapshot_interval_updates:
             room.updates_since_compact = 0
-            async with self._doc_repo_provider() as repo:
-                await doc_store.compact(repo, room.workspace_id, room.doc, room.seq)
+            if await self._backplane.try_lock(f"compact:{room.workspace_id}", 30):
+                async with self._doc_repo_provider() as repo:
+                    await doc_store.compact(repo, room.workspace_id, room.doc, room.seq)
 
     async def _broadcast(self, room: Room, frame: bytes, exclude: str | None = None) -> None:
         """Fan out to room members. (Phase 2: this seam becomes the Redis
@@ -269,10 +316,21 @@ def get_collab_manager() -> CollaborationManager:
     global _manager
     if _manager is None:
         from app.config import get_settings
+        from app.services.collaboration.backplane import (
+            InMemoryBackplane,
+            RedisBackplane,
+        )
         from app.services.collaboration.providers import make_doc_repo_provider
 
         settings = get_settings()
-        _manager = CollaborationManager(make_doc_repo_provider(settings), settings)
+        backplane = (
+            RedisBackplane()
+            if settings.realtime_backplane == "redis"
+            else InMemoryBackplane()
+        )
+        _manager = CollaborationManager(
+            make_doc_repo_provider(settings), settings, backplane
+        )
     return _manager
 
 

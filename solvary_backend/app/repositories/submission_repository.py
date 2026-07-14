@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from datetime import datetime
 
 from app.models.submission import Submission
 from app.repositories.base import AbstractRepository
@@ -15,6 +16,12 @@ class SubmissionRepository(AbstractRepository[Submission]):
         limit: int = 50,
     ) -> tuple[list[Submission], str | None]:
         """Newest first."""
+        ...
+
+    @abstractmethod
+    async def find_stale(self, cutoff: datetime) -> list[Submission]:
+        """Non-terminal submissions not updated since cutoff — the worker
+        persists incrementally, so live jobs always have fresh updated_at."""
         ...
 
 
@@ -49,6 +56,13 @@ class MockSubmissionRepository(SubmissionRepository):
         page = items[:limit]
         next_cursor = page[-1].id if len(items) > limit and page else None
         return page, next_cursor
+
+    async def find_stale(self, cutoff: datetime) -> list[Submission]:
+        return [
+            s
+            for s in self._submissions
+            if s.verdict in ("queued", "running") and s.updated_at < cutoff
+        ]
 
     async def list_all(self, **filters: object) -> list[Submission]:
         return list(self._submissions)

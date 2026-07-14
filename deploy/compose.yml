@@ -10,8 +10,9 @@
 # real deployments — the refresh cookie is Secure in production and
 # requires HTTPS end-to-end.
 #
-# Scaling note: backend is single-replica by design until the Redis
-# queue/backplane lands (in-process rooms, SSE broker, job queue).
+# Scaling: with the Redis queue + backplane, the backend scales out:
+#   docker compose up -d --scale backend=3
+# (nginx re-resolves the backend service per request — see nginx.conf)
 
 name: solvary
 
@@ -27,6 +28,15 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U solvary"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -52,9 +62,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://solvary:${POSTGRES_PASSWORD}@db:5432/solvary
       EXECUTION_PROVIDER: piston
       PISTON_BASE_URL: http://piston:2000
+      QUEUE_BACKEND: redis
+      REALTIME_BACKPLANE: redis
+      REDIS_URL: redis://redis:6379/0
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       piston:
         condition: service_started

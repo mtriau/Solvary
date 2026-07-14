@@ -256,4 +256,4 @@ async def check_execution_quota(
     runtime: Annotated[ExecutionRuntime, Depends(get_runtime)],
 ) -> None:
     """Reserves a concurrency slot; the worker releases it when the job ends."""
-    runtime.quota.check_and_reserve(current_user.id)
+    await runtime.quota.check_and_reserve(current_user.id)

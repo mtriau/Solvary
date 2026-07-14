@@ -57,7 +57,7 @@ async def stream_run_events(
 ) -> StreamingResponse:
     """SSE stream for an ad-hoc run. In-memory only: replays what the broker
     still holds, follows until terminal; lost on restart (§6.5)."""
-    if not runtime.broker.known(run_id) and runtime.broker.is_done(run_id):
+    if not await runtime.broker.known(run_id) and await runtime.broker.is_done(run_id):
         raise NotFoundException(f"Run {run_id} not found")
 
     async def event_stream():

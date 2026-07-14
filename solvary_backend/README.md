@@ -41,8 +41,23 @@ before serve (lifespan create_all is disabled under ENVIRONMENT=production),
 non-root containers, `/api/ready` reports per-dependency health (DB +
 Piston) for orchestrator traffic gating, nginx proxies SSE unbuffered and
 upgrades `/ws`. Put TLS in front for real deployments — the refresh cookie
-is `Secure` in production. Backend is single-replica until the Redis
-queue/backplane lands.
+is `Secure` in production.
+
+**Scaling out**: with `QUEUE_BACKEND=redis` and `REALTIME_BACKPLANE=redis`
+(the compose defaults), the backend scales horizontally:
+
+```powershell
+docker compose up -d --scale backend=3
+```
+
+The job queue (Redis list), SSE event broker (Redis streams), execution
+quota, and collab room backplane (Redis pub/sub + INCR seq allocation +
+compaction lock) are all shared — any replica's worker runs any job, any
+replica serves any SSE stream, and WebSocket clients on different replicas
+collaborate through the backplane. A stale-job reaper on every instance
+marks submissions abandoned by a dead worker (fresh updated_at is the
+liveness signal — the worker persists incrementally) as internal_error.
+In-memory backends remain the dev default (`QUEUE_BACKEND=memory`).
 
 ## Authentication
 
