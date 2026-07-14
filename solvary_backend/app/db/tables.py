@@ -35,6 +35,9 @@ class UserRow(Base, TimestampMixin):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")  # user | admin
+    google_sub: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
 
 
 class ProblemRow(Base, TimestampMixin):
@@ -209,3 +212,20 @@ class DocUpdateRow(Base):
     __table_args__ = (
         UniqueConstraint("workspace_id", "seq", name="uq_doc_updates_workspace_seq"),
     )
+
+
+class RefreshTokenRow(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (Index("ix_refresh_tokens_user", "user_id"),)

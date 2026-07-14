@@ -10,6 +10,7 @@ from app.models.user import User
 from app.repositories import mock_registry
 from app.repositories.doc_repository import DocRepository
 from app.repositories.problem_repository import ProblemRepository
+from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.submission_repository import SubmissionRepository
 from app.repositories.testcase_repository import TestCaseRepository
 from app.repositories.user_repository import UserRepository
@@ -141,11 +142,26 @@ def get_file_repository(
 # ── Service providers ─────────────────────────────────────────────
 
 
+def get_refresh_token_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> RefreshTokenRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_refresh_token_repo
+    from app.repositories.sqlalchemy_refresh_token_repository import (
+        SQLAlchemyRefreshTokenRepository,
+    )
+
+    assert db is not None
+    return SQLAlchemyRefreshTokenRepository(db)
+
+
 def get_auth_service(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    refresh_repo: Annotated[RefreshTokenRepository, Depends(get_refresh_token_repository)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthService:
-    return AuthService(user_repo, settings)
+    return AuthService(user_repo, refresh_repo, settings)
 
 
 def get_user_service(

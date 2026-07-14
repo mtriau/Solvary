@@ -8,9 +8,13 @@ class Settings(BaseSettings):
 
     app_name: str = "Solvary"
     debug: bool = False
+    environment: str = "dev"  # "dev" | "production" — production fail-fasts on unsafe config
     api_prefix: str = "/api"
     secret_key: str = "change-me"
     access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 14
+    # Google OIDC sign-in; empty = feature disabled
+    google_client_id: str = ""
     cors_origins: list[str] = ["http://localhost:5173"]
     database_url: str = "sqlite+aiosqlite:///./solvary.db"
     use_mock_db: bool = False

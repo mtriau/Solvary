@@ -23,6 +23,12 @@ class SQLAlchemyUserRepository(UserRepository):
         row = result.scalar_one_or_none()
         return self._to_domain(row) if row else None
 
+    async def get_by_google_sub(self, sub: str) -> User | None:
+        stmt = select(UserRow).where(UserRow.google_sub == sub)
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        return self._to_domain(row) if row else None
+
     async def list_all(self, **filters: object) -> list[User]:
         stmt = select(UserRow).order_by(UserRow.created_at)
         result = await self._session.execute(stmt)
@@ -36,6 +42,7 @@ class SQLAlchemyUserRepository(UserRepository):
             hashed_password=entity.hashed_password,
             avatar_url=entity.avatar_url,
             role=entity.role,
+            google_sub=entity.google_sub,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -51,6 +58,7 @@ class SQLAlchemyUserRepository(UserRepository):
             row.hashed_password = entity.hashed_password
             row.avatar_url = entity.avatar_url
             row.role = entity.role
+            row.google_sub = entity.google_sub
             row.updated_at = datetime.now(UTC)
             await self._session.flush()
         return entity
@@ -69,6 +77,7 @@ class SQLAlchemyUserRepository(UserRepository):
             hashed_password=row.hashed_password,
             avatar_url=row.avatar_url,
             role=row.role,  # type: ignore[arg-type]
+            google_sub=row.google_sub,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

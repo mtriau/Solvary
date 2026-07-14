@@ -1,17 +1,28 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
+import GoogleSignInButton from '@/features/auth/GoogleSignInButton';
 import { env } from '@/shared/lib/env';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login, isLoading } = useAuth();
+  const { login, loginWithGoogle, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/';
+
+  async function handleGoogle(credential: string) {
+    setError('');
+    try {
+      await loginWithGoogle(credential);
+      navigate(from, { replace: true });
+    } catch {
+      setError('Google sign-in failed');
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -75,6 +86,10 @@ export default function LoginPage() {
             {isLoading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
+
+        <div className="mt-4">
+          <GoogleSignInButton onCredential={handleGoogle} />
+        </div>
 
         <p className="text-sm text-gray-500 text-center mt-6">
           Don't have an account?{' '}

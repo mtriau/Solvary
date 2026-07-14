@@ -9,6 +9,9 @@ class UserRepository(AbstractRepository[User]):
     @abstractmethod
     async def get_by_email(self, email: str) -> User | None: ...
 
+    @abstractmethod
+    async def get_by_google_sub(self, sub: str) -> User | None: ...
+
 
 class MockUserRepository(UserRepository):
     def __init__(self) -> None:
@@ -19,6 +22,9 @@ class MockUserRepository(UserRepository):
 
     async def get_by_email(self, email: str) -> User | None:
         return next((u for u in self._users if u.email == email), None)
+
+    async def get_by_google_sub(self, sub: str) -> User | None:
+        return next((u for u in self._users if u.google_sub == sub), None)
 
     async def list_all(self, **filters: object) -> list[User]:
         return list(self._users)

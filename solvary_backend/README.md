@@ -21,6 +21,21 @@ python -m venv .venv
 .venv\Scripts\python -m scripts.seed_problems   # two-sum, fizzbuzz, mean-of-list
 ```
 
+## Authentication
+
+- Access tokens are short-lived JWTs; a **refresh token** (httpOnly cookie,
+  rotated on every use, revocable server-side) keeps sessions alive. The
+  frontend auto-refreshes on 401. `POST /auth/logout` revokes.
+- Login/register are **rate limited** (per IP + per target email, in-memory).
+- With `ENVIRONMENT=production`, the app **refuses to boot** on the default
+  `SECRET_KEY`.
+- **Google sign-in**: create an OAuth client ID (type "Web application") in
+  Google Cloud Console with your origin (e.g. http://localhost:5173) as an
+  authorized JavaScript origin, then set `GOOGLE_CLIENT_ID` in the backend
+  `.env` and `VITE_GOOGLE_CLIENT_ID` in the frontend `.env`. The button
+  appears automatically; the backend verifies Google's ID token against its
+  JWKS and creates or links the account (verified emails only).
+
 ## Code execution providers
 
 Selected by `EXECUTION_PROVIDER` (env or `.env`; see `.env.example`):

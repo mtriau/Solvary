@@ -18,6 +18,7 @@ os.environ["USE_MOCK_DB"] = "false"
 os.environ["EXECUTION_PROVIDER"] = "mock"  # judge tests rely on mock markers
 os.environ["SECRET_KEY"] = "test-secret-not-for-production"
 os.environ["DB_NULL_POOL"] = "true"  # per-test event loops (see engine.py)
+os.environ["GOOGLE_CLIENT_ID"] = "test-google-client-id"  # enable the endpoint
 
 import uuid  # noqa: E402
 
@@ -74,6 +75,17 @@ def _fresh_test_database():
         "solvary_test.db", ""
     ), "tests must never point at the dev database"
     asyncio.run(setup())
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Auth limiters are process-global; without a reset, the suite's many
+    logins (same ASGITransport client IP) would trip the per-IP window."""
+    from app.core.rate_limit import login_ip_limiter, login_limiter, signup_limiter
+
+    for limiter in (login_limiter, login_ip_limiter, signup_limiter):
+        limiter.reset()
     yield
 
 

@@ -59,6 +59,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
 
+    if settings.environment == "production" and settings.secret_key == "change-me":
+        raise RuntimeError(
+            "Refusing to start: SECRET_KEY is the default. Set a real secret "
+            "(e.g. `python -c \"import secrets; print(secrets.token_urlsafe(48))\"`)."
+        )
+
     application = FastAPI(
         title=settings.app_name,
         version="0.1.0",

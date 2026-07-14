@@ -9,9 +9,11 @@ import {
 } from 'react';
 import type { User } from '@/shared/types/api';
 import {
+  apiLogout,
+  fetchCurrentUser,
+  googleLogin as apiGoogleLogin,
   login as apiLogin,
   register as apiRegister,
-  fetchCurrentUser,
 } from '@/shared/lib/api';
 
 interface AuthContext {
@@ -20,6 +22,7 @@ interface AuthContext {
   isAdmin: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -58,6 +61,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    setIsLoading(true);
+    try {
+      const response = await apiGoogleLogin(credential);
+      localStorage.setItem('auth_token', response.access_token);
+      setUser(response.user);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const register = useCallback(
     async (name: string, email: string, password: string) => {
       setIsLoading(true);
@@ -75,6 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('auth_token');
+    // Revoke the refresh token server-side (fire and forget)
+    apiLogout().catch(() => {});
   }, []);
 
   const value = useMemo(
@@ -84,10 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: user?.role === 'admin',
       isLoading,
       login,
+      loginWithGoogle,
       register,
       logout,
     }),
-    [user, isLoading, login, register, logout],
+    [user, isLoading, login, loginWithGoogle, register, logout],
   );
 
   return <AuthContext value={value}>{children}</AuthContext>;

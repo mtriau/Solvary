@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -33,3 +35,13 @@ def decode_access_token(token: str) -> dict:
     except JWTError as e:
         raise ValueError(f"Invalid token: {e}") from e
     return payload
+
+
+def generate_refresh_token() -> tuple[str, str]:
+    """(raw_token, sha256_hash) — only the hash is ever persisted."""
+    raw = secrets.token_urlsafe(48)
+    return raw, hash_refresh_token(raw)
+
+
+def hash_refresh_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()

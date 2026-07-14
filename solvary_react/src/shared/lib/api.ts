@@ -29,6 +29,14 @@ export async function fetchCurrentUser(): Promise<User> {
   return apiClient.get<User>('/users/me');
 }
 
+export async function googleLogin(credential: string): Promise<TokenResponse> {
+  return apiClient.post<TokenResponse>('/auth/google', { credential });
+}
+
+export async function apiLogout(): Promise<void> {
+  return apiClient.post<void>('/auth/logout');
+}
+
 // ── Problems ───────────────────────────────────────────────────────
 
 export async function fetchProblems(params?: {
