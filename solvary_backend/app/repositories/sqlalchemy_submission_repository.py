@@ -59,6 +59,11 @@ class SQLAlchemySubmissionRepository(SubmissionRepository):
         next_cursor = page[-1].id if has_next and page else None
         return [self._to_domain(r) for r in page], next_cursor
 
+    async def list_by_user(self, user_id: str) -> list[Submission]:
+        stmt = select(SubmissionRow).where(SubmissionRow.user_id == user_id)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(r) for r in result.scalars().all()]
+
     async def find_stale(self, cutoff: datetime) -> list[Submission]:
         stmt = select(SubmissionRow).where(
             SubmissionRow.verdict.in_(("queued", "running")),

@@ -19,6 +19,11 @@ class SubmissionRepository(AbstractRepository[Submission]):
         ...
 
     @abstractmethod
+    async def list_by_user(self, user_id: str) -> list[Submission]:
+        """Every submission by a user — stats computation."""
+        ...
+
+    @abstractmethod
     async def find_stale(self, cutoff: datetime) -> list[Submission]:
         """Non-terminal submissions not updated since cutoff — the worker
         persists incrementally, so live jobs always have fresh updated_at."""
@@ -56,6 +61,9 @@ class MockSubmissionRepository(SubmissionRepository):
         page = items[:limit]
         next_cursor = page[-1].id if len(items) > limit and page else None
         return page, next_cursor
+
+    async def list_by_user(self, user_id: str) -> list[Submission]:
+        return [s for s in self._submissions if s.user_id == user_id]
 
     async def find_stale(self, cutoff: datetime) -> list[Submission]:
         return [

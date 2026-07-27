@@ -1,5 +1,5 @@
 import { lazy } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { RootLayout } from '@/app/layouts/RootLayout';
 import { ArenaLayout } from '@/app/layouts/ArenaLayout';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -7,6 +7,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 // Lazy-loaded pages — each gets its own chunk
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage'));
+const HomePage = lazy(() => import('@/pages/home/HomePage'));
 const ProblemsPage = lazy(() => import('@/pages/problems/ProblemsPage'));
 const ProblemPage = lazy(() => import('@/pages/problems/ProblemPage'));
 const WorkspacesPage = lazy(() => import('@/pages/workspaces/WorkspacesPage'));
@@ -28,7 +29,7 @@ export const router = createBrowserRouter([
           {
             element: <ArenaLayout />,
             children: [
-              { index: true, element: <Navigate to="/problems" replace /> },
+              { index: true, element: <HomePage /> },
               { path: 'problems', element: <ProblemsPage /> },
               { path: 'problems/:slug', element: <ProblemPage /> },
               { path: 'workspaces', element: <WorkspacesPage /> },

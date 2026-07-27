@@ -23,6 +23,7 @@ from app.services.auth_service import AuthService
 from app.services.collaboration.manager import get_collab_manager
 from app.services.problem_service import ProblemService
 from app.services.queue.runtime import ExecutionRuntime, get_runtime
+from app.services.stats_service import StatsService
 from app.services.submission_service import SubmissionService
 from app.services.user_service import UserService
 from app.services.workspace_service import WorkspaceService
@@ -228,6 +229,14 @@ def get_workspace_service(
         get_collab_manager(),
         doc_repo,
     )
+
+
+def get_stats_service(
+    submission_repo: Annotated[SubmissionRepository, Depends(get_submission_repository)],
+    problem_repo: Annotated[ProblemRepository, Depends(get_problem_repository)],
+    member_repo: Annotated[MemberRepository, Depends(get_member_repository)],
+) -> StatsService:
+    return StatsService(submission_repo, problem_repo, member_repo)
 
 
 # ── Auth dependencies ─────────────────────────────────────────────

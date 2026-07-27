@@ -1,5 +1,6 @@
 import { apiClient } from './api-client';
 import type {
+  Stats,
   PaginatedResponse,
   ProblemDetail,
   ProblemSummary,
@@ -133,4 +134,10 @@ export async function renameFile(
 
 export async function deleteFile(wsId: string, fileId: string): Promise<void> {
   return apiClient.delete(`/v1/workspaces/${wsId}/files/${fileId}`);
+}
+
+// ── Stats ─────────────────────────────────────────────────────────
+
+export async function fetchMyStats(): Promise<Stats> {
+  return apiClient.get<Stats>('/v1/stats/me');
 }

@@ -1,9 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { Avatar } from '@/shared/components/Avatar';
-import { Code2, LogOut, Swords, Users } from 'lucide-react';
+import { Code2, Home, LogOut, Swords, Users } from 'lucide-react';
 
 const NAV_ITEMS = [
+  { to: '/', label: 'Home', icon: Home },
   { to: '/problems', label: 'Problems', icon: Swords },
   { to: '/workspaces', label: 'Workspaces', icon: Users },
 ] as const;
@@ -31,6 +32,7 @@ export function ArenaLayout() {
               <NavLink
                 key={to}
                 to={to}
+                end={to === '/'}
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                     isActive

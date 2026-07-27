@@ -123,3 +123,60 @@ export interface WorkspaceFile {
   path: string;
   language: string | null;
 }
+
+// ── Stats & accolades ─────────────────────────────────────────────
+
+export interface TotalsStats {
+  solved: number;
+  total_problems: number;
+  submissions: number;
+  accepted_submissions: number;
+  acceptance_rate: number;
+  current_streak_days: number;
+  longest_streak_days: number;
+}
+
+export interface DifficultyStat {
+  difficulty: Difficulty;
+  solved: number;
+  total: number;
+}
+
+export interface LanguageStat {
+  language: string;
+  submissions: number;
+  solved: number;
+}
+
+export interface HeatmapDay {
+  day: string;
+  count: number;
+}
+
+export interface StatsBadge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  earned: boolean;
+}
+
+export interface RecentSubmission {
+  id: string;
+  problem_slug: string;
+  problem_title: string;
+  difficulty: Difficulty;
+  language: string;
+  verdict: string;
+  runtime_ms: number | null;
+  created_at: string;
+}
+
+export interface Stats {
+  totals: TotalsStats;
+  by_difficulty: DifficultyStat[];
+  by_language: LanguageStat[];
+  heatmap: HeatmapDay[];
+  badges: StatsBadge[];
+  recent: RecentSubmission[];
+}
