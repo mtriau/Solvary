@@ -155,6 +155,25 @@ unchanged. Python only. Drills, the Perplexity set and the Sierra set all
 use this mode. `tests/test_pytest_harness.py` runs the runner for real
 through a fake Piston, including the full 97-test todo-tracker suite.
 
+Failures read like pytest's: the runner rewrites every `assert` in the suite
+files at load time, so a failed comparison reports what it compared instead
+of a bare `AssertionError`:
+
+```
+AssertionError: assert word_lengths(['hi', 'yo']) == {'hi': 2, 'yo': 2}
+  Expected: {'hi': 2, 'yo': 2}
+  Actual:   {'hi': 3, 'yo': 3}
+  Differences:
+    'hi': expected 2, got 3
+    'yo': expected 2, got 3
+```
+
+`==` shows Expected / Actual plus a short diff (dict keys and values, sequence
+length and first differing indexes, set members, first differing character of
+a string); other operators show both operands; a bare `assert x` shows the
+value. Each operand is evaluated once and the traceback keeps the original
+line. `tests/test_assert_rewrite.py`.
+
 ### Python prelude (no imports needed)
 
 Every Python run and submission, in every mode, can use the common standard

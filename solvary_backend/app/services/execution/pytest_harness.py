@@ -22,6 +22,13 @@ How a submission runs (PistonExecutor):
   back into per-case results, which the executor emits as ordinary
   `case_result` events (PASS → stdout "PASS", so the plain exact checker
   decides; FAIL → stdout "FAIL\n<traceback>"; TLE → status tle).
+
+Assertion rewriting: like pytest, the runner rewrites every `assert` in the
+suite files (AST transform at load time) so a failure reports the values
+compared — `Expected:` / `Actual:` for `==`, both operands for other
+operators, the value for a bare `assert x` — plus a short diff for dicts,
+sequences, sets and strings. Each operand is evaluated exactly once and the
+traceback still points at the original assert line.
 """
 
 from __future__ import annotations
@@ -183,11 +190,12 @@ def param(*values, id=None, marks=()):
 # ── main.py: collects, runs and reports the requested tests ────────────
 
 RUNNER = r'''
-import importlib.util
+import ast
 import inspect
 import io
 import json
 import os
+import pprint
 import signal
 import sys
 import time
@@ -234,12 +242,175 @@ def _format_exc(exc):
     return "".join(lines)
 
 
+# ── assertion rewriting ───────────────────────────────────────────
+
+_OP_SYMBOL = {
+    "Eq": "==", "NotEq": "!=", "Lt": "<", "LtE": "<=", "Gt": ">", "GtE": ">=",
+    "Is": "is", "IsNot": "is not", "In": "in", "NotIn": "not in",
+}
+_REPR_MAX = 1200
+_DIFF_MAX = 12
+
+
+class _AssertRewriter(ast.NodeTransformer):
+    """`assert a == b, msg` becomes: evaluate a and b once into temporaries,
+    and raise an AssertionError built by _sv_fail() with both values when the
+    comparison is false. Other asserts keep the value of the tested expression."""
+
+    def __init__(self):
+        self.counter = 0
+
+    def visit_Assert(self, node):
+        self.counter += 1
+        tag = f"_sv{self.counter}_"
+        src = ast.unparse(node.test)
+        if len(src) > 200:
+            src = src[:200] + "…"
+        msg = node.msg if node.msg is not None else ast.Constant(None)
+        body = []
+
+        def store(name, expr):
+            body.append(ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=expr))
+
+        def load(name):
+            return ast.Name(id=name, ctx=ast.Load())
+
+        if isinstance(node.test, ast.Compare):
+            operands = [node.test.left] + node.test.comparators
+            names = [f"{tag}{i}" for i in range(len(operands))]
+            for name, expr in zip(names, operands):
+                store(name, expr)
+            cond = ast.Compare(
+                left=load(names[0]), ops=node.test.ops, comparators=[load(n) for n in names[1:]]
+            )
+            ops = tuple(type(op).__name__ for op in node.test.ops)
+        else:
+            name = f"{tag}0"
+            negated = isinstance(node.test, ast.UnaryOp) and isinstance(node.test.op, ast.Not)
+            store(name, node.test.operand if negated else node.test)
+            cond = ast.UnaryOp(op=ast.Not(), operand=load(name)) if negated else load(name)
+            names, ops = [name], ()
+
+        fail = ast.Call(
+            func=load("_sv_fail"),
+            args=[
+                ast.Constant(src),
+                ast.Constant(ops),
+                ast.Tuple(elts=[load(n) for n in names], ctx=ast.Load()),
+                msg,
+            ],
+            keywords=[],
+        )
+        body.append(
+            ast.If(
+                test=ast.UnaryOp(op=ast.Not(), operand=cond),
+                body=[ast.Raise(exc=fail, cause=None)],
+                orelse=[],
+            )
+        )
+        for stmt in body:
+            ast.copy_location(stmt, node)
+            ast.fix_missing_locations(stmt)
+        return body
+
+
+def _sv_repr(value):
+    text = pprint.pformat(value, width=88, sort_dicts=False)
+    if len(text) > _REPR_MAX:
+        text = text[:_REPR_MAX] + "…"
+    return text.replace("\n", "\n" + " " * 12)
+
+
+def _sv_diff(expected, actual):
+    """A few lines pinpointing how `actual` differs from `expected`."""
+    out = []
+    if type(expected).__name__ == "approx" or type(actual).__name__ == "approx":
+        return out  # pytest.approx compares itself; its repr already says enough
+    if type(expected) is not type(actual) and not (
+        isinstance(expected, (list, tuple)) and isinstance(actual, (list, tuple))
+    ):
+        out.append(f"type: expected {type(expected).__name__}, got {type(actual).__name__}")
+        return out
+    if isinstance(expected, dict):
+        for k in expected:
+            if k not in actual:
+                out.append(f"missing key {k!r} (expected {expected[k]!r})")
+        for k in actual:
+            if k not in expected:
+                out.append(f"unexpected key {k!r} (got {actual[k]!r})")
+        for k in expected:
+            if k in actual and expected[k] != actual[k]:
+                out.append(f"{k!r}: expected {expected[k]!r}, got {actual[k]!r}")
+    elif isinstance(expected, (list, tuple)):
+        if type(expected) is not type(actual):
+            out.append(f"type: expected {type(expected).__name__}, got {type(actual).__name__}")
+        if len(expected) != len(actual):
+            out.append(f"length: expected {len(expected)}, got {len(actual)}")
+        for i, (e, a) in enumerate(zip(expected, actual)):
+            if e != a:
+                out.append(f"index {i}: expected {e!r}, got {a!r}")
+                if len(out) >= _DIFF_MAX:
+                    break
+        if len(expected) > len(actual):
+            out.append(f"missing from index {len(actual)}: {expected[len(actual):]!r}")
+        elif len(actual) > len(expected):
+            out.append(f"extra from index {len(expected)}: {actual[len(expected):]!r}")
+    elif isinstance(expected, (set, frozenset)):
+        if expected - actual:
+            out.append(f"missing: {sorted(expected - actual, key=repr)!r}")
+        if actual - expected:
+            out.append(f"unexpected: {sorted(actual - expected, key=repr)!r}")
+    elif isinstance(expected, str):
+        if len(expected) != len(actual):
+            out.append(f"length: expected {len(expected)}, got {len(actual)}")
+        for i, (e, a) in enumerate(zip(expected, actual)):
+            if e != a:
+                out.append(
+                    f"first difference at index {i}: expected {expected[i:i + 20]!r}, "
+                    f"got {actual[i:i + 20]!r}"
+                )
+                break
+    return out[:_DIFF_MAX]
+
+
+def _sv_fail(src, ops, values, msg):
+    lines = []
+    if msg is not None:
+        lines.append(str(msg))
+    lines.append("assert " + src)
+    if ops == ("Eq",):
+        actual, expected = values
+        lines.append("  Expected: " + _sv_repr(expected))
+        lines.append("  Actual:   " + _sv_repr(actual))
+        diff = _sv_diff(expected, actual)
+        if diff:
+            lines.append("  Differences:")
+            lines.extend("    " + d for d in diff)
+    elif len(ops) == 1:
+        left, right = values
+        lines.append("  Left:  " + _sv_repr(left))
+        lines.append("  Right: " + _sv_repr(right))
+        lines.append(f"  ({_OP_SYMBOL.get(ops[0], ops[0])} is False)")
+    elif ops:
+        for i, v in enumerate(values):
+            lines.append(f"  Operand {i + 1}: " + _sv_repr(v))
+    else:
+        lines.append("  Value: " + _sv_repr(values[0]))
+    return AssertionError("\n".join(lines))
+
+
 def _load(path):
+    """Import a suite file with its asserts rewritten (see _AssertRewriter)."""
     name = os.path.splitext(os.path.basename(path))[0]
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod = importlib.util.module_from_spec(spec)
+    with open(path, encoding="utf-8") as f:
+        source = f.read()
+    tree = _AssertRewriter().visit(ast.parse(source, filename=path))
+    code = compile(tree, path, "exec")
+    mod = type(sys)(name)
+    mod.__file__ = path
+    mod._sv_fail = _sv_fail
     sys.modules[name] = mod
-    spec.loader.exec_module(mod)
+    exec(code, mod.__dict__)
     return mod
 
 
