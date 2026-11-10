@@ -315,3 +315,11 @@ export interface Stats {
   badges: StatsBadge[];
   recent: RecentSubmission[];
 }
+
+// ── Python prelude (names available without an import) ───────────
+
+export interface PythonPrelude {
+  language: string;
+  modules: string[];
+  names: Record<string, string[]>;
+}

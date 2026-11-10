@@ -13,3 +13,11 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     run_id: str
+
+
+class PreludeResponse(BaseModel):
+    """Names a Python submission can use without importing them."""
+
+    language: str = "python"
+    modules: list[str]
+    names: dict[str, list[str]]

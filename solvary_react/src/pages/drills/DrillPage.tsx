@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import PreludeHint from '@/features/execution/components/PreludeHint';
 import ReactMarkdown from 'react-markdown';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -231,6 +232,7 @@ export default function DrillPage() {
               <span className="text-gray-300"> · Ctrl+Enter submits</span>
             </span>
             <div className="flex items-center gap-2">
+              <PreludeHint />
               <button
                 onClick={() => setCode(drill.starter_code.python ?? '')}
                 title="Back to the starter code"

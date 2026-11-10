@@ -155,6 +155,27 @@ unchanged. Python only. Drills, the Perplexity set and the Sierra set all
 use this mode. `tests/test_pytest_harness.py` runs the runner for real
 through a fake Piston, including the full 97-test todo-tracker suite.
 
+### Python prelude (no imports needed)
+
+Every Python run and submission, in every mode, can use the common standard
+library names without importing them: `Counter`, `defaultdict`, `deque`,
+`heappush`/`heappop`, `bisect_left`, `accumulate`/`pairwise`/`product`,
+`reduce`/`lru_cache`/`cache`, `gcd`/`inf`/`ceil`, `List`/`Optional`/…,
+`dataclass`/`field`, `itemgetter`, `ascii_lowercase`, `deepcopy`, plus the
+modules themselves (`collections`, `itertools`, `math`, `re`, `json`, `random`,
+`sys`, …). The list lives in `app/services/execution/python_prelude.py` and is
+served by `GET /v1/execution/prelude`; the **Auto-imports** button next to the
+editor shows it. Writing the import anyway is fine.
+
+How: a small `solvary_prelude.py` is shipped into the sandbox and its
+`install()` copies the names onto `builtins`, so nothing is prepended to the
+user's source and traceback line numbers stay right. The pytest runner calls
+it before importing the candidate's module; plain scripts now run through a
+tiny `main.py` that installs the prelude and executes the code as
+`solution.py` / `__main__` (stdin, exit code and a traceback starting at the
+user's code are preserved). A name the sandbox's Python lacks is skipped; an
+existing builtin is never overwritten. `tests/test_python_prelude.py`.
+
 ## Ad-hoc Run
 
 `POST /v1/execution/run` (+ `GET /v1/execution/{run_id}/events` SSE) runs a

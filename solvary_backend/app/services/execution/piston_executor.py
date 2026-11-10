@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from app.services.execution import pytest_harness
+from app.services.execution import pytest_harness, python_prelude
 from app.services.execution.base import BaseExecutor, ExecEvent, ExecJob
 
 logger = logging.getLogger(__name__)
@@ -251,9 +251,10 @@ class PistonExecutor(BaseExecutor):
         memory_kb: int,
         ordinal: int,
     ) -> ExecEvent:
-        data = await self._post(
-            client, language, [{"content": code}], stdin, time_limit_s, memory_kb
-        )
+        # Python scripts run through a tiny runner that preloads the common
+        # stdlib names first (python_prelude.py); other languages run as-is
+        files = python_prelude.script_files(code) if language == "python" else [{"content": code}]
+        data = await self._post(client, language, files, stdin, time_limit_s, memory_kb)
 
         compile_stage = data.get("compile")
         if compile_stage and compile_stage.get("code") not in (0, None):

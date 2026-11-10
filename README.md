@@ -11,6 +11,7 @@
 - **Drills** — 32 tiny exercises grouped by idiom (comprehensions, `Counter`/`defaultdict`, sorting keys, `zip`/`enumerate`, slicing, generators, EAFP/walrus/dataclasses). Each enforces the idiom behaviourally where it can and reveals a worked solution once your tests pass.
 - **Collaborative workspaces** — multiple people editing the same code simultaneously (CRDT via [Yjs](https://yjs.dev) + Monaco), with presence cursors, role-based access (owner/editor/viewer), and server-authoritative file management.
 - **Challenge attempts = the two combined** — bind a problem to a workspace and pair-solve it: starter code seeded server-side, any editor can submit, and every member watches the same verdict stream live (pair-interview mode, essentially).
+- **No boilerplate imports** — every Python run gets `Counter`, `defaultdict`, `deque`, `heapq`, `bisect`, `itertools`, `functools`, `math`, `typing` and friends preloaded, the way LeetCode does; an **Auto-imports** button lists them.
 - **Stats & accolades** — a home page with solve counts, acceptance rate, streaks, a contribution-style activity heatmap, and 13 earnable badges. Every past submission's code is viewable from the problem page and the interview review.
 - **AI assistant** — streamed tutoring hints and interview code review from any OpenAI-compatible LLM server (local or cloud); a canned mock provider is the default so nothing needs a key.
 - **Auth** — email/password or Google sign-in, short-lived JWTs with rotated refresh tokens (httpOnly cookie), login rate limiting, per-user execution quotas.

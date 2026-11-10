@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
+import PreludeHint from '@/features/execution/components/PreludeHint';
 import ReactMarkdown from 'react-markdown';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Play, Send, Users } from 'lucide-react';
@@ -220,6 +221,7 @@ export default function ProblemPage() {
             ))}
           </select>
           <div className="flex items-center gap-2">
+            {language === 'python' && <PreludeHint />}
             <button
               onClick={solveCollaboratively}
               disabled={creatingWs}

@@ -18,11 +18,20 @@ from app.models.problem import SUPPORTED_LANGUAGES
 from app.models.user import User
 from app.repositories.problem_repository import ProblemRepository
 from app.repositories.workspace_repository import MemberRepository, WorkspaceRepository
-from app.schemas.execution import RunRequest, RunResponse
+from app.schemas.execution import PreludeResponse, RunRequest, RunResponse
+from app.services.execution import python_prelude
 from app.services.execution.base import ExecJob
 from app.services.queue.runtime import ExecutionRuntime, get_runtime
 
 router = APIRouter(prefix="/v1/execution", tags=["execution"])
+
+
+@router.get("/prelude", response_model=PreludeResponse)
+async def python_prelude_names() -> PreludeResponse:
+    """The standard-library modules and names every Python run and
+    submission gets without an import (see python_prelude.py). Static, and
+    public: the UI shows it next to the editor."""
+    return PreludeResponse(**python_prelude.describe())
 
 
 @router.post("/run", response_model=RunResponse, dependencies=[Depends(check_execution_quota)])

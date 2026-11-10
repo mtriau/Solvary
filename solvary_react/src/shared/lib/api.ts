@@ -11,6 +11,7 @@ import type {
   PaginatedResponse,
   ProblemDetail,
   ProblemSummary,
+  PythonPrelude,
   Submission,
   SubmissionDetail,
   TokenResponse,
@@ -106,6 +107,10 @@ export async function runCode(data: {
   problem_id?: string;
 }): Promise<{ run_id: string }> {
   return apiClient.post('/v1/execution/run', data);
+}
+
+export async function fetchPythonPrelude(): Promise<PythonPrelude> {
+  return apiClient.get('/v1/execution/prelude');
 }
 
 // ── Workspaces (M3) ────────────────────────────────────────────────

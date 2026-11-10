@@ -15,8 +15,9 @@ How a pytest problem is stored:
 
 How a submission runs (PistonExecutor):
   ONE sandbox execution with these files: `main.py` (RUNNER), `pytest.py`
-  (SHIM: the slice of the pytest API the suites use), `<module>.py` (the
-  candidate's code) and the suite files. stdin lists the test ids to run.
+  (SHIM: the slice of the pytest API the suites use), `solvary_prelude.py`
+  (python_prelude.py: stdlib names available without an import),
+  `<module>.py` (the candidate's code) and the suite files. stdin lists the test ids to run.
   The runner prints one record per test; `parse_output` turns the records
   back into per-case results, which the executor emits as ordinary
   `case_result` events (PASS → stdout "PASS", so the plain exact checker
@@ -28,6 +29,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from app.services.execution import python_prelude
 from app.services.execution.base import ExecCase, ExecJob
 
 RECORD_MARK = "@@SOLVARY_TEST "
@@ -223,7 +225,7 @@ def _format_exc(exc):
     keep = []
     for f in traceback.extract_tb(exc.__traceback__):
         base = os.path.basename(f.filename)
-        if base in ("main.py", "pytest.py"):
+        if base in ("main.py", "pytest.py", "solvary_prelude.py"):
             continue
         keep.append(traceback.FrameSummary(base, f.lineno, f.name, line=f.line))
     lines = ["Traceback (most recent call last):\n"] if keep else []
@@ -324,6 +326,9 @@ def _run_one(mod, fn, cls):
 def main():
     sys.path.insert(0, HERE)
     sys.setrecursionlimit(1000)
+    import solvary_prelude
+
+    solvary_prelude.install()
     requested = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
 
     # Syntax errors in the candidate's module are a compile error, not N failures
@@ -407,6 +412,7 @@ def build_files(
     out = [
         {"name": "main.py", "content": runner},
         {"name": "pytest.py", "content": SHIM},
+        python_prelude.prelude_file(),
         {"name": f"{module}.py", "content": job.code},
     ]
     out += [{"name": name, "content": src} for name, src in files.items()]

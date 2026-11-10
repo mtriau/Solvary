@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Loader2, Play, Send, X } from 'lucide-react'
 import type * as Y from 'yjs';
 import { useAuth } from '@/app/providers/AuthProvider';
 import CollabEditor from '@/features/collaboration/CollabEditor';
+import PreludeHint from '@/features/execution/components/PreludeHint';
 import { useCollab } from '@/features/collaboration/useCollab';
 import { VerdictPanel } from '@/features/execution/components/VerdictPanel';
 import { RunPanel } from '@/features/execution/components/RunPanel';
@@ -239,6 +240,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
           <div className="h-10 flex items-center justify-between px-4 border-b border-gray-200 shrink-0">
             <span className="text-xs text-gray-500 font-mono">{filePath}</span>
             <div className="flex items-center gap-2">
+              <PreludeHint compact />
               <button
                 onClick={onRun}
                 disabled={runState.isRunning || !active || !synced}
