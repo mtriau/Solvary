@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 Verdict = Literal[
     "queued",
@@ -21,6 +21,7 @@ class SubmissionCreate(BaseModel):
     language: str
     code: str
     workspace_id: str | None = None
+    interview_session_id: str | None = None  # mock interview (counts toward its score)
 
 
 class TestResult(BaseModel):
@@ -35,6 +36,7 @@ class SubmissionResponse(BaseModel):
     user_id: str
     problem_id: str
     workspace_id: str | None
+    interview_session_id: str | None = None
     language: str
     verdict: Verdict
     runtime_ms: int | None
@@ -43,6 +45,13 @@ class SubmissionResponse(BaseModel):
     total: int
     test_results: list[TestResult]
     created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _utc(cls, v: datetime) -> datetime:
+        # SQLite hands back naive datetimes; without a zone the browser parses
+        # the ISO string as local time and interview offsets shift by hours.
+        return v if v.tzinfo else v.replace(tzinfo=UTC)
 
 
 class SubmissionDetail(SubmissionResponse):

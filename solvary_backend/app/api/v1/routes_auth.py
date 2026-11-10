@@ -42,7 +42,7 @@ async def register(
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
-    signup_limiter.check(client_ip(request))
+    await signup_limiter.check(client_ip(request))
     tokens, raw_refresh = await auth_service.register(data.name, data.email, data.password)
     _set_refresh_cookie(response, settings, raw_refresh)
     return tokens
@@ -57,8 +57,8 @@ async def login(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
     ip = client_ip(request)
-    login_ip_limiter.check(ip)
-    login_limiter.check(f"{ip}:{data.email.lower()}")
+    await login_ip_limiter.check(ip)
+    await login_limiter.check(f"{ip}:{data.email.lower()}")
     tokens, raw_refresh = await auth_service.login(data.email, data.password)
     _set_refresh_cookie(response, settings, raw_refresh)
     return tokens
@@ -72,7 +72,7 @@ async def google_login(
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenResponse:
-    signup_limiter.check(client_ip(request))
+    await signup_limiter.check(client_ip(request))
     tokens, raw_refresh = await auth_service.google_login(data.credential)
     _set_refresh_cookie(response, settings, raw_refresh)
     return tokens

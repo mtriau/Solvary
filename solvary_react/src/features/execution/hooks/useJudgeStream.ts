@@ -84,6 +84,7 @@ export function useJudgeStream() {
       language: string,
       code: string,
       workspaceId?: string,
+      interviewSessionId?: string,
     ): Promise<string | null> => {
       abortRef.current?.abort();
       const abort = new AbortController();
@@ -96,6 +97,7 @@ export function useJudgeStream() {
           language,
           code,
           ...(workspaceId ? { workspace_id: workspaceId } : {}),
+          ...(interviewSessionId ? { interview_session_id: interviewSessionId } : {}),
         });
         setState((s) => ({ ...s, submissionId: submission.id }));
         await stream(submission.id, abort);

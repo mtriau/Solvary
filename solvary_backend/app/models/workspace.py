@@ -12,6 +12,7 @@ class Workspace:
     owner_id: str
     language: str = "python"
     problem_id: str | None = None  # set → this workspace is a challenge attempt
+    kind: str = "standard"  # "interview" -> owned by a mock-interview session, hidden from lists
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 

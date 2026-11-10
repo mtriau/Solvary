@@ -188,6 +188,10 @@ async def test_awareness_relay_replay_and_removal(manager, repo):
     sock_a.push(sync.encode_awareness(payload))
     await asyncio.sleep(0.02)
     assert sock_b.frames(sync.MESSAGE_AWARENESS) == [(None, payload)]
+    # ...and A gets its own update echoed: a solo editor's 15 s awareness
+    # renewals are the keepalive that stops y-websocket's 30 s silence
+    # reconnect (which remounted the editor once a minute)
+    assert sock_a.frames(sync.MESSAGE_AWARENESS) == [(None, payload)]
 
     # Late joiner C gets A's cached awareness replayed at handshake
     sock_c = FakeSocket()

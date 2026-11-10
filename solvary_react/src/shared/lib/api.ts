@@ -1,10 +1,18 @@
 import { apiClient } from './api-client';
 import type {
+  DrillDetail,
+  DrillList,
+  InterviewSessionDetail,
+  InterviewSessionReview,
+  InterviewSessionSummary,
+  InterviewTemplateDetail,
+  InterviewTemplateSummary,
   Stats,
   PaginatedResponse,
   ProblemDetail,
   ProblemSummary,
   Submission,
+  SubmissionDetail,
   TokenResponse,
   User,
 } from '@/shared/types/api';
@@ -55,6 +63,16 @@ export async function fetchProblem(slug: string): Promise<ProblemDetail> {
   return apiClient.get(`/v1/problems/${slug}`);
 }
 
+// ── Drills ─────────────────────────────────────────────────────────
+
+export async function fetchDrills(): Promise<DrillList> {
+  return apiClient.get('/v1/drills');
+}
+
+export async function fetchDrill(slug: string): Promise<DrillDetail> {
+  return apiClient.get(`/v1/drills/${slug}`);
+}
+
 // ── Submissions ────────────────────────────────────────────────────
 
 export async function createSubmission(data: {
@@ -62,8 +80,13 @@ export async function createSubmission(data: {
   language: string;
   code: string;
   workspace_id?: string;
+  interview_session_id?: string;
 }): Promise<Submission> {
   return apiClient.post('/v1/submissions', data);
+}
+
+export async function fetchSubmission(id: string): Promise<SubmissionDetail> {
+  return apiClient.get(`/v1/submissions/${id}`);
 }
 
 export async function fetchSubmissions(
@@ -71,6 +94,18 @@ export async function fetchSubmissions(
 ): Promise<PaginatedResponse<Submission>> {
   const qs = problemId ? `?problem_id=${problemId}` : '';
   return apiClient.get(`/v1/submissions${qs}`);
+}
+
+// ── Ad-hoc execution (ephemeral — design §6.5) ────────────────────
+
+export async function runCode(data: {
+  language: string;
+  code: string;
+  stdin?: string;
+  workspace_id?: string;
+  problem_id?: string;
+}): Promise<{ run_id: string }> {
+  return apiClient.post('/v1/execution/run', data);
 }
 
 // ── Workspaces (M3) ────────────────────────────────────────────────
@@ -134,6 +169,61 @@ export async function renameFile(
 
 export async function deleteFile(wsId: string, fileId: string): Promise<void> {
   return apiClient.delete(`/v1/workspaces/${wsId}/files/${fileId}`);
+}
+
+// ── Mock interviews ───────────────────────────────────────────────
+
+export async function fetchInterviewTemplates(): Promise<InterviewTemplateSummary[]> {
+  return apiClient.get('/v1/interviews/templates');
+}
+
+export async function fetchInterviewTemplate(slug: string): Promise<InterviewTemplateDetail> {
+  return apiClient.get(`/v1/interviews/templates/${slug}`);
+}
+
+export async function startInterview(data: {
+  template_id: string;
+  language?: string;
+  duration_s?: number;
+}): Promise<InterviewSessionDetail> {
+  return apiClient.post('/v1/interviews/sessions', data);
+}
+
+export async function fetchInterviewSessions(
+  cursor?: string,
+): Promise<PaginatedResponse<InterviewSessionSummary>> {
+  return apiClient.get(`/v1/interviews/sessions${cursor ? `?cursor=${cursor}` : ''}`);
+}
+
+export async function fetchActiveInterview(): Promise<InterviewSessionSummary | null> {
+  return apiClient.get('/v1/interviews/sessions/active');
+}
+
+export async function fetchInterviewSession(id: string): Promise<InterviewSessionDetail> {
+  return apiClient.get(`/v1/interviews/sessions/${id}`);
+}
+
+export async function advanceInterview(id: string): Promise<InterviewSessionDetail> {
+  return apiClient.post(`/v1/interviews/sessions/${id}/advance`);
+}
+
+export async function switchInterviewStage(
+  id: string,
+  stage: number,
+): Promise<InterviewSessionDetail> {
+  return apiClient.post(`/v1/interviews/sessions/${id}/switch`, { stage });
+}
+
+export async function finishInterview(id: string): Promise<InterviewSessionDetail> {
+  return apiClient.post(`/v1/interviews/sessions/${id}/finish`);
+}
+
+export async function abandonInterview(id: string): Promise<InterviewSessionDetail> {
+  return apiClient.post(`/v1/interviews/sessions/${id}/abandon`);
+}
+
+export async function fetchInterviewReview(id: string): Promise<InterviewSessionReview> {
+  return apiClient.get(`/v1/interviews/sessions/${id}/review`);
 }
 
 // ── Stats ─────────────────────────────────────────────────────────

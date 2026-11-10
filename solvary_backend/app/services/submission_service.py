@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from app.config import Settings
 from app.core.exceptions import (
@@ -24,6 +25,9 @@ from app.schemas.submissions import (
 from app.services.execution.base import ExecCase, ExecJob
 from app.services.queue.runtime import ExecutionRuntime
 
+if TYPE_CHECKING:  # avoid the import cycle: interview_service imports us
+    from app.services.interview_service import InterviewService
+
 _TERMINAL_VERDICTS = {
     "accepted",
     "wrong_answer",
@@ -45,7 +49,9 @@ class SubmissionService:
         member_repo: MemberRepository,
         runtime: ExecutionRuntime,
         settings: Settings,
+        interview_service: "InterviewService | None" = None,
     ) -> None:
+        self._interviews = interview_service
         self._submission_repo = submission_repo
         self._problem_repo = problem_repo
         self._testcase_repo = testcase_repo
@@ -70,6 +76,18 @@ class SubmissionService:
         problem = await self._problem_repo.get_by_id(data.problem_id)
         if not problem:
             raise NotFoundException(f"Problem {data.problem_id} not found")
+        if problem.judge_mode == "pytest" and data.language != "python":
+            raise BadRequestException("This problem is judged with a Python test suite")
+
+        # Mock interview: the session (not the workspace) binds the problem -
+        # it must be live and the stage unlocked. Checked first so a locked
+        # stage is a 403 regardless of workspace membership.
+        if data.interview_session_id:
+            if self._interviews is None:
+                raise BadRequestException("Interviews are not available")
+            await self._interviews.authorize_submission(
+                user, data.interview_session_id, data.problem_id, data.workspace_id
+            )
 
         # Workspace-tagged submission (M4 challenge attempt): submitter must
         # be an editor+ member, and the workspace must be bound to this problem
@@ -82,7 +100,7 @@ class SubmissionService:
             )
             if member is None or member.role == "viewer":
                 raise ForbiddenException("Submitting requires editor access")
-            if workspace.problem_id != data.problem_id:
+            if not data.interview_session_id and workspace.problem_id != data.problem_id:
                 raise BadRequestException("Workspace is not bound to this problem")
 
         cases = await self._testcase_repo.list_by_problem(problem.id)
@@ -94,6 +112,7 @@ class SubmissionService:
             user_id=user.id,
             problem_id=problem.id,
             workspace_id=data.workspace_id,
+            interview_session_id=data.interview_session_id,
             language=data.language,
             code=data.code,
             total=len(cases),
@@ -110,6 +129,7 @@ class SubmissionService:
             language=data.language,
             code=data.code,
             mode="judge",
+            harness=problem.harness if problem.judge_mode == "pytest" else None,
             cases=[
                 ExecCase(
                     ordinal=c.ordinal,
@@ -235,6 +255,7 @@ class SubmissionService:
             user_id=s.user_id,
             problem_id=s.problem_id,
             workspace_id=s.workspace_id,
+            interview_session_id=s.interview_session_id,
             language=s.language,
             verdict=s.verdict,
             runtime_ms=s.runtime_ms,
@@ -252,6 +273,7 @@ class SubmissionService:
             user_id=s.user_id,
             problem_id=s.problem_id,
             workspace_id=s.workspace_id,
+            interview_session_id=s.interview_session_id,
             language=s.language,
             verdict=s.verdict,
             runtime_ms=s.runtime_ms,

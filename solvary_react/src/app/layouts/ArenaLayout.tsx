@@ -1,12 +1,15 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { Avatar } from '@/shared/components/Avatar';
-import { Code2, Home, LogOut, Swords, Users } from 'lucide-react';
+import { Code2, Home, LogOut, Swords, Timer, Users, Zap } from 'lucide-react';
+import { ActiveInterviewPill } from '@/features/interviews/components/ActiveInterviewPill';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/problems', label: 'Problems', icon: Swords },
+  { to: '/drills', label: 'Drills', icon: Zap },
   { to: '/workspaces', label: 'Workspaces', icon: Users },
+  { to: '/interviews', label: 'Interviews', icon: Timer },
 ] as const;
 
 export function ArenaLayout() {
@@ -48,6 +51,7 @@ export function ArenaLayout() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          {user && <ActiveInterviewPill />}
           {user && <Avatar src={user.avatar_url} name={user.name} size="sm" />}
           <button
             onClick={handleLogout}

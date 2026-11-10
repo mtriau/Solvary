@@ -39,10 +39,54 @@ export interface TestCaseSample {
 export interface ProblemDetail extends ProblemSummary {
   statement_md: string;
   starter_code: Record<string, string>;
-  judge_mode: 'stdio' | 'signature';
+  judge_mode: 'stdio' | 'signature' | 'pytest';
   time_limit_s: number;
   memory_kb: number;
   sample_testcases: TestCaseSample[];
+  /** pytest mode: the provided suite files (name → source) */
+  harness_files?: Record<string, string> | null;
+}
+
+// ── Drills (quick idiom exercises) ─────────────────────────────────
+
+export interface DrillSummary {
+  id: string;
+  slug: string;
+  title: string;
+  topic: string;
+  order: number;
+  solved: boolean;
+  attempts: number;
+}
+
+export interface DrillTopic {
+  slug: string;
+  title: string;
+  blurb: string;
+  drills: DrillSummary[];
+  solved: number;
+  total: number;
+}
+
+export interface DrillList {
+  topics: DrillTopic[];
+  solved: number;
+  total: number;
+  next_slug: string | null;
+}
+
+export interface DrillDetail extends ProblemDetail {
+  topic: string;
+  topic_title: string;
+  order: number;
+  position: number;
+  topic_total: number;
+  editorial_md: string | null;
+  solved: boolean;
+  attempts: number;
+  prev_slug: string | null;
+  next_slug: string | null;
+  next_unsolved_slug: string | null;
 }
 
 // ── Submissions / judging ──────────────────────────────────────────
@@ -70,6 +114,7 @@ export interface Submission {
   user_id: string;
   problem_id: string;
   workspace_id: string | null;
+  interview_session_id?: string | null;
   language: string;
   verdict: Verdict;
   runtime_ms: number | null;
@@ -78,6 +123,11 @@ export interface Submission {
   total: number;
   test_results: TestResult[];
   created_at: string;
+}
+
+/** `GET /v1/submissions/{id}`: the row plus the code that was judged. */
+export interface SubmissionDetail extends Submission {
+  code: string;
 }
 
 export interface JudgeEvent {
@@ -106,6 +156,7 @@ export interface Workspace {
   problem_slug: string | null;
   problem_title: string | null;
   my_role: MemberRole;
+  kind: 'standard' | 'interview';
   created_at: string;
 }
 
@@ -122,6 +173,90 @@ export interface WorkspaceFile {
   id: string;
   path: string;
   language: string | null;
+}
+
+// ── Mock interviews ───────────────────────────────────────────────
+
+export type InterviewFormat = 'levels' | 'questions';
+export type InterviewStatus = 'active' | 'finished' | 'expired' | 'abandoned';
+
+export interface InterviewTemplateInfo {
+  id: string;
+  slug: string;
+  title: string;
+  format: InterviewFormat;
+  duration_s: number;
+  advance: 'free' | 'on_submit' | 'on_accept';
+  pacing: 'coached' | 'strict';
+}
+
+export interface InterviewStageInfo {
+  ordinal: number;
+  title: string;
+  budget_s: number | null;
+}
+
+export interface InterviewScore {
+  passed: number;
+  total: number;
+  percent: number;
+}
+
+export interface InterviewSessionSummary {
+  id: string;
+  template: InterviewTemplateInfo;
+  status: InterviewStatus;
+  language: string;
+  /** This run's clock; differs from template.duration_s when overridden at start. */
+  duration_s: number;
+  started_at: string;
+  ends_at: string;
+  finished_at: string | null;
+  server_time: string;
+  score: InterviewScore;
+  time_used_s: number;
+  stages_reached: number;
+  stage_count: number;
+  diagnosis: string | null;
+}
+
+export interface InterviewTemplateSummary extends InterviewTemplateInfo {
+  stages: InterviewStageInfo[];
+  last_result: InterviewSessionSummary | null;
+}
+
+export interface InterviewTemplateDetail extends InterviewTemplateSummary {
+  description_md: string;
+}
+
+export interface InterviewStageResult {
+  submissions: number;
+  best_submission_id: string | null;
+  best_verdict: string | null;
+  best_passed: number;
+  best_total: number;
+  time_spent_s: number;
+}
+
+export interface InterviewStageView extends InterviewStageInfo {
+  locked: boolean;
+  file_id: string | null;
+  deadline_at: string | null;
+  problem: ProblemDetail | null;
+  editorial_md: string | null;
+  result: InterviewStageResult;
+}
+
+export interface InterviewSessionDetail extends InterviewSessionSummary {
+  workspace_id: string | null;
+  current_stage: number;
+  unlocked_through: number;
+  stages: InterviewStageView[];
+  timeline: { stage: number; at: string }[];
+}
+
+export interface InterviewSessionReview extends InterviewSessionDetail {
+  submissions: Submission[];
 }
 
 // ── Stats & accolades ─────────────────────────────────────────────

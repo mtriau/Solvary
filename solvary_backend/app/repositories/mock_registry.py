@@ -7,6 +7,11 @@ they live here rather than inside dependencies.py.
 """
 
 from app.repositories.doc_repository import MockDocRepository
+from app.repositories.interview_repository import (
+    MockInterviewSessionRepository,
+    MockInterviewStageRepository,
+    MockInterviewTemplateRepository,
+)
 from app.repositories.problem_repository import MockProblemRepository
 from app.repositories.refresh_token_repository import MockRefreshTokenRepository
 from app.repositories.submission_repository import MockSubmissionRepository
@@ -27,3 +32,6 @@ mock_workspace_repo = MockWorkspaceRepository()
 mock_member_repo = MockMemberRepository()
 mock_file_repo = MockFileRepository()
 mock_doc_repo = MockDocRepository()
+mock_interview_template_repo = MockInterviewTemplateRepository()
+mock_interview_stage_repo = MockInterviewStageRepository()
+mock_interview_session_repo = MockInterviewSessionRepository()

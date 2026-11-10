@@ -122,6 +122,26 @@ async def test_redis_quota_cross_instance():
     await instance_b.release(user)
 
 
+# ── auth rate limiter shared across instances ─────────────────────
+
+
+async def test_redis_rate_limiter_shared_window():
+    from app.core.rate_limit import RedisSlidingWindowLimiter, TooManyRequestsException
+
+    name = f"t-{uuid.uuid4().hex[:6]}"
+    instance_a = RedisSlidingWindowLimiter(name, limit=3, window_s=60)
+    instance_b = RedisSlidingWindowLimiter(name, limit=3, window_s=60)
+    try:
+        await instance_a.check("1.2.3.4")
+        await instance_b.check("1.2.3.4")
+        await instance_a.check("1.2.3.4")
+        with pytest.raises(TooManyRequestsException):
+            await instance_b.check("1.2.3.4")  # 4th hit, seen from the other replica
+        await instance_b.check("5.6.7.8")  # other key unaffected
+    finally:
+        await instance_a.reset()
+
+
 # ── collab across two "instances" ──────────────────────────────────
 
 
@@ -185,11 +205,25 @@ async def test_collab_relays_across_instances():
 # ── reaper (backend-agnostic, tested here for the runtime path) ───
 
 
-async def test_reaper_marks_stale_submissions(judge_runtime):
+async def test_reaper_marks_stale_submissions(client, judge_runtime):
     from app.db.engine import async_session_factory
     from app.repositories.sqlalchemy_submission_repository import (
         SQLAlchemySubmissionRepository,
     )
+    from tests.conftest import ensure_two_sum
+
+    # Real FK targets — Postgres (and SQLite with foreign_keys=ON) reject
+    # dangling user/problem ids
+    problem = await ensure_two_sum(client)
+    r = await client.post(
+        "/api/auth/register",
+        json={
+            "name": "Reap",
+            "email": f"reap-{uuid.uuid4().hex[:8]}@test.dev",
+            "password": "pw123456",
+        },
+    )
+    user_id = r.json()["user"]["id"]
 
     stale_id = f"sub_{uuid.uuid4().hex[:8]}"
     async with async_session_factory() as session:
@@ -197,8 +231,8 @@ async def test_reaper_marks_stale_submissions(judge_runtime):
         await repo.create(
             Submission(
                 id=stale_id,
-                user_id="user_reap",
-                problem_id="prob_reap",
+                user_id=user_id,
+                problem_id=problem["id"],
                 language="python",
                 code="x",
                 verdict="running",

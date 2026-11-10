@@ -117,12 +117,50 @@ class WorkspaceService:
 
         return self._to_response(workspace, "owner", problem)
 
+    async def create_for_interview(
+        self, user: User, name: str, language: str, files: list[tuple[str, str]]
+    ) -> tuple[Workspace, list[str]]:
+        """A mock-interview session's code store: kind="interview" (hidden
+        from the workspaces list, fixed file set), one file per (path, seed)
+        - birthed server-side in one snapshot. Returns (workspace, file ids
+        in the given order)."""
+        workspace = Workspace(
+            id=f"ws_{uuid.uuid4().hex[:8]}",
+            name=name,
+            owner_id=user.id,
+            language=language,
+            kind="interview",
+        )
+        await self._workspaces.create(workspace)
+        await self._members.create(
+            WorkspaceMember(
+                id=f"wsm_{uuid.uuid4().hex[:8]}",
+                workspace_id=workspace.id,
+                user_id=user.id,
+                role="owner",
+            )
+        )
+        seeds: dict[str, str] = {}
+        ids: list[str] = []
+        for path, content in files:
+            file = WorkspaceFile(
+                id=f"wsf_{uuid.uuid4().hex[:8]}",
+                workspace_id=workspace.id,
+                path=path,
+                language=language,
+            )
+            await self._files.create(file)
+            seeds[file.id] = content
+            ids.append(file.id)
+        await doc_store.birth(self._doc_repo, workspace.id, seeds)
+        return workspace, ids
+
     async def list_mine(self, user: User) -> list[WorkspaceResponse]:
         memberships = await self._members.list_by_user(user.id)
         out = []
         for m in sorted(memberships, key=lambda m: m.created_at, reverse=True):
             workspace = await self._workspaces.get_by_id(m.workspace_id)
-            if workspace:
+            if workspace and workspace.kind == "standard":
                 out.append(self._to_response(workspace, m.role, await self._problem_of(workspace)))
         return out
 
@@ -211,7 +249,8 @@ class WorkspaceService:
     async def create_file(
         self, workspace_id: str, user: User, data: FileCreate
     ) -> FileResponse:
-        await self.require_role(workspace_id, user, "editor")
+        workspace, _ = await self.require_role(workspace_id, user, "editor")
+        self._require_mutable_files(workspace)
         if await self._files.get_by_workspace_and_path(workspace_id, data.path):
             raise ConflictException(f"File '{data.path}' already exists")
 
@@ -234,7 +273,8 @@ class WorkspaceService:
     async def rename_file(
         self, workspace_id: str, user: User, file_id: str, data: FileRename
     ) -> FileResponse:
-        await self.require_role(workspace_id, user, "editor")
+        workspace, _ = await self.require_role(workspace_id, user, "editor")
+        self._require_mutable_files(workspace)
         file = await self._files.get_by_id(file_id)
         if not file or file.workspace_id != workspace_id:
             raise NotFoundException("File not found")
@@ -249,7 +289,8 @@ class WorkspaceService:
         return FileResponse(id=file.id, path=file.path, language=file.language)
 
     async def delete_file(self, workspace_id: str, user: User, file_id: str) -> None:
-        await self.require_role(workspace_id, user, "editor")
+        workspace, _ = await self.require_role(workspace_id, user, "editor")
+        self._require_mutable_files(workspace)
         file = await self._files.get_by_id(file_id)
         if not file or file.workspace_id != workspace_id:
             raise NotFoundException("File not found")
@@ -266,6 +307,11 @@ class WorkspaceService:
                     del files_map[file_id]
 
         await self._collab.server_edit(workspace_id, remove_text, repo=self._doc_repo)
+
+    @staticmethod
+    def _require_mutable_files(workspace: Workspace) -> None:
+        if workspace.kind == "interview":
+            raise BadRequestException("Interview workspaces have a fixed file set")
 
     # ── mapping ────────────────────────────────────────────────────
 
@@ -285,5 +331,6 @@ class WorkspaceService:
             problem_slug=problem.slug if problem else None,
             problem_title=problem.title if problem else None,
             my_role=my_role,  # type: ignore[arg-type]
+            kind=w.kind,  # type: ignore[arg-type]
             created_at=w.created_at,
         )

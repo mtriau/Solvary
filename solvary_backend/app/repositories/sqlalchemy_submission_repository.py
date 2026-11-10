@@ -64,6 +64,11 @@ class SQLAlchemySubmissionRepository(SubmissionRepository):
         result = await self._session.execute(stmt)
         return [self._to_domain(r) for r in result.scalars().all()]
 
+    async def list_by_session(self, session_id: str) -> list[Submission]:
+        stmt = select(SubmissionRow).where(SubmissionRow.interview_session_id == session_id)
+        result = await self._session.execute(stmt)
+        return [self._to_domain(r) for r in result.scalars().all()]
+
     async def find_stale(self, cutoff: datetime) -> list[Submission]:
         stmt = select(SubmissionRow).where(
             SubmissionRow.verdict.in_(("queued", "running")),
@@ -83,6 +88,7 @@ class SQLAlchemySubmissionRepository(SubmissionRepository):
             user_id=entity.user_id,
             problem_id=entity.problem_id,
             workspace_id=entity.workspace_id,
+            interview_session_id=entity.interview_session_id,
             language=entity.language,
             code=entity.code,
             verdict=entity.verdict,
@@ -123,6 +129,7 @@ class SQLAlchemySubmissionRepository(SubmissionRepository):
             user_id=row.user_id,
             problem_id=row.problem_id,
             workspace_id=row.workspace_id,
+            interview_session_id=row.interview_session_id,
             language=row.language,
             code=row.code,
             verdict=row.verdict,  # type: ignore[arg-type]

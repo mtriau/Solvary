@@ -12,6 +12,11 @@ from datetime import UTC, date, datetime, timedelta
 from app.models.problem import SUPPORTED_LANGUAGES
 from app.models.submission import Submission
 from app.models.user import User
+from app.repositories.interview_repository import (
+    InterviewSessionRepository,
+    InterviewStageRepository,
+    InterviewTemplateRepository,
+)
 from app.repositories.problem_repository import ProblemRepository
 from app.repositories.submission_repository import SubmissionRepository
 from app.repositories.workspace_repository import MemberRepository
@@ -61,10 +66,16 @@ class StatsService:
         submission_repo: SubmissionRepository,
         problem_repo: ProblemRepository,
         member_repo: MemberRepository,
+        session_repo: InterviewSessionRepository | None = None,
+        stage_repo: InterviewStageRepository | None = None,
+        template_repo: InterviewTemplateRepository | None = None,
     ) -> None:
         self._submissions = submission_repo
         self._problems = problem_repo
         self._members = member_repo
+        self._sessions = session_repo
+        self._stages = stage_repo
+        self._templates = template_repo
 
     async def compute(self, user: User) -> StatsResponse:
         subs = await self._submissions.list_by_user(user.id)
@@ -200,6 +211,7 @@ class StatsService:
 
         total = len(subs)
         rate = len(accepted) / total if total else 0.0
+        clock_beater, pacer = await self._interview_badges(user, subs)
 
         return [
             Badge(
@@ -269,7 +281,56 @@ class StatsService:
                 description="Solve every problem in the catalog",
                 earned=bool(problems) and len(solved_ids) == len(problems),
             ),
+            Badge(
+                id="clock-beater", name="Clock Beater", icon="⏱️",
+                description="Finish a mock interview with every part accepted, before time",
+                earned=clock_beater,
+            ),
+            Badge(
+                id="pacer", name="Pacer", icon="🏃",
+                description="Reach every part of a mock interview within 110% of its budget",
+                earned=pacer,
+            ),
         ]
+
+    async def _interview_badges(self, user: User, subs: list[Submission]) -> tuple[bool, bool]:
+        """Clock Beater: a `finished` session where every stage has an accept.
+        Pacer: a completed session (finished/expired) that reached every
+        stage, each within 110% of its budget."""
+        if self._sessions is None or self._stages is None:
+            return False, False
+        from app.services.interview_service import scaled_budgets, session_end, stage_times
+
+        clock_beater = pacer = False
+        by_session: dict[str, list[Submission]] = defaultdict(list)
+        for s in subs:
+            if s.interview_session_id:
+                by_session[s.interview_session_id].append(s)
+        now = datetime.now(UTC)
+        for session in await self._sessions.list_by_user(user.id):
+            if session.status not in ("finished", "expired"):
+                continue
+            template = (
+                await self._templates.get_by_id(session.template_id) if self._templates else None
+            )
+            stages = await self._stages.list_by_template(session.template_id)
+            if not stages or template is None:
+                continue
+            budgets = scaled_budgets(template, stages, session)
+            accepted_problems = {
+                s.problem_id for s in by_session.get(session.id, []) if s.verdict == "accepted"
+            }
+            if session.status == "finished" and all(
+                st.problem_id in accepted_problems for st in stages
+            ):
+                clock_beater = True
+            if session.unlocked_through >= len(stages) and all(budgets.values()):
+                spent = stage_times(session.timeline, session_end(session, now))
+                if all(
+                    spent.get(st.ordinal, 0.0) <= 1.1 * (budgets[st.ordinal] or 0) for st in stages
+                ):
+                    pacer = True
+        return clock_beater, pacer
 
 
 def _hour_utc(dt: datetime) -> int:

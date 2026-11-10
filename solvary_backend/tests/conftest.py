@@ -79,13 +79,18 @@ def _fresh_test_database():
 
 
 @pytest.fixture(autouse=True)
-def _reset_rate_limiters():
+async def _reset_rate_limiters():
     """Auth limiters are process-global; without a reset, the suite's many
     logins (same ASGITransport client IP) would trip the per-IP window."""
-    from app.core.rate_limit import login_ip_limiter, login_limiter, signup_limiter
+    from app.core.rate_limit import (
+        assist_limiter,
+        login_ip_limiter,
+        login_limiter,
+        signup_limiter,
+    )
 
-    for limiter in (login_limiter, login_ip_limiter, signup_limiter):
-        limiter.reset()
+    for limiter in (login_limiter, login_ip_limiter, signup_limiter, assist_limiter):
+        await limiter.reset()
     yield
 
 

@@ -24,6 +24,11 @@ class SubmissionRepository(AbstractRepository[Submission]):
         ...
 
     @abstractmethod
+    async def list_by_session(self, session_id: str) -> list[Submission]:
+        """Every submission tagged with a mock-interview session."""
+        ...
+
+    @abstractmethod
     async def find_stale(self, cutoff: datetime) -> list[Submission]:
         """Non-terminal submissions not updated since cutoff — the worker
         persists incrementally, so live jobs always have fresh updated_at."""
@@ -64,6 +69,9 @@ class MockSubmissionRepository(SubmissionRepository):
 
     async def list_by_user(self, user_id: str) -> list[Submission]:
         return [s for s in self._submissions if s.user_id == user_id]
+
+    async def list_by_session(self, session_id: str) -> list[Submission]:
+        return [s for s in self._submissions if s.interview_session_id == session_id]
 
     async def find_stale(self, cutoff: datetime) -> list[Submission]:
         return [

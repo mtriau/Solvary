@@ -48,6 +48,10 @@ services:
     environment:
       PISTON_RUN_TIMEOUT: 15000
       PISTON_COMPILE_TIMEOUT: 15000
+      PISTON_RUN_CPU_TIME: 15000
+      # Piston kills a run whose stdout exceeds this many BYTES (default 1024!) —
+      # a pytest-mode suite reports every test in one run, so give it 1 MiB
+      PISTON_OUTPUT_MAX_SIZE: 1048576
     volumes:
       - piston_packages:/piston/packages
     tmpfs:

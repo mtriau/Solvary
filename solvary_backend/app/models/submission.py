@@ -23,6 +23,7 @@ class Submission:
     language: str
     code: str
     workspace_id: str | None = None
+    interview_session_id: str | None = None  # set -> counts toward a mock interview
     verdict: Verdict = "queued"
     runtime_ms: int | None = None
     memory_kb: int | None = None

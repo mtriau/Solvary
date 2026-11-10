@@ -84,6 +84,7 @@ class SQLAlchemyProblemRepository(ProblemRepository):
             starter_code=entity.starter_code,
             function_signature=entity.function_signature,
             judge_mode=entity.judge_mode,
+            harness=entity.harness,
             time_limit_s=entity.time_limit_s,
             memory_kb=entity.memory_kb,
             editorial_md=entity.editorial_md,
@@ -105,6 +106,8 @@ class SQLAlchemyProblemRepository(ProblemRepository):
             row.tags = entity.tags
             row.starter_code = entity.starter_code
             row.function_signature = entity.function_signature
+            row.judge_mode = entity.judge_mode
+            row.harness = entity.harness
             row.time_limit_s = entity.time_limit_s
             row.memory_kb = entity.memory_kb
             row.editorial_md = entity.editorial_md
@@ -130,6 +133,7 @@ class SQLAlchemyProblemRepository(ProblemRepository):
             starter_code=dict(row.starter_code or {}),
             function_signature=row.function_signature,
             judge_mode=row.judge_mode,  # type: ignore[arg-type]
+            harness=dict(row.harness) if row.harness else None,
             time_limit_s=row.time_limit_s,
             memory_kb=row.memory_kb,
             editorial_md=row.editorial_md,

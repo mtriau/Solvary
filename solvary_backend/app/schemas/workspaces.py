@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 MemberRole = Literal["owner", "editor", "viewer"]
 
@@ -29,7 +29,13 @@ class WorkspaceResponse(BaseModel):
     problem_slug: str | None = None
     problem_title: str | None = None
     my_role: MemberRole
+    kind: Literal["standard", "interview"] = "standard"
     created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _utc(cls, v: datetime) -> datetime:
+        return v if v.tzinfo else v.replace(tzinfo=UTC)
 
 
 # ── Members ────────────────────────────────────────────────────────

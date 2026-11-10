@@ -175,3 +175,28 @@ async def test_unsupported_language_rejected(client: AsyncClient):
         headers=_auth(token),
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_adhoc_run_with_unknown_problem_is_404(client: AsyncClient):
+    token = await _register(client)
+    resp = await client.post(
+        "/api/v1/execution/run",
+        json={"language": "python", "code": "print(1)", "problem_id": "prob_nope"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_adhoc_run_with_stdio_problem_runs_the_buffer(client: AsyncClient):
+    token = await _register(client)
+    problem = await ensure_two_sum(client)
+    resp = await client.post(
+        "/api/v1/execution/run",
+        json={"language": "python", "code": "print(1)", "stdin": "x", "problem_id": problem["id"]},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200, resp.text
+    events = await _sse_events(client, token, f"/api/v1/execution/{resp.json()['run_id']}/events")
+    assert next(e for e in events if e["kind"] == "case_result")["stdout"] == "x"

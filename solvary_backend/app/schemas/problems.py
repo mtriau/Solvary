@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 Difficulty = Literal["easy", "medium", "hard"]
 Checker = Literal["exact", "float_tolerance", "unordered_lines"]
+JudgeMode = Literal["stdio", "signature", "pytest"]
 
 
 # ── Test cases ─────────────────────────────────────────────────────
@@ -58,10 +59,12 @@ class ProblemSummary(BaseModel):
 class ProblemDetail(ProblemSummary):
     statement_md: str
     starter_code: dict[str, str]
-    judge_mode: Literal["stdio", "signature"]
+    judge_mode: JudgeMode
     time_limit_s: float
     memory_kb: int
     sample_testcases: list[TestCaseSample]
+    # pytest mode: the provided suite files the candidate may read
+    harness_files: dict[str, str] | None = None
 
 
 class ProblemCreate(BaseModel):
@@ -72,7 +75,8 @@ class ProblemCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     starter_code: dict[str, str] = Field(default_factory=dict)
     function_signature: str | None = None
-    judge_mode: Literal["stdio", "signature"] = "stdio"
+    judge_mode: JudgeMode = "stdio"
+    harness: dict | None = None
     time_limit_s: float = 5.0
     memory_kb: int = 256_000
     editorial_md: str | None = None

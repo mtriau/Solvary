@@ -35,10 +35,13 @@ if _is_sqlite:
 
     @event.listens_for(engine.sync_engine, "connect")
     def _sqlite_pragmas(dbapi_connection, _record):
-        """WAL lets readers proceed under a writer; busy_timeout queues writers."""
+        """WAL lets readers proceed under a writer; busy_timeout queues writers;
+        foreign_keys makes ON DELETE CASCADE actually fire (SQLite ignores FKs
+        by default — Postgres enforces them, so this keeps dev honest)."""
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
 async_session_factory = async_sessionmaker(

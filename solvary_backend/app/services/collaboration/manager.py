@@ -192,8 +192,14 @@ class CollaborationManager:
 
         if msg_type == sync.MESSAGE_AWARENESS:
             conn.last_awareness = payload
+            # Echo awareness to the SENDER too (as the reference y-websocket
+            # server does): y-websocket closes and reconnects a socket that has
+            # received nothing for 30 s, and a solo editor's own 15 s awareness
+            # renewals are the only traffic there is. Excluding the sender made
+            # every single-user session reconnect once a minute (editor remount,
+            # cursor jumping to the top). Applying your own awareness is a no-op.
             async with room.lock:
-                await self._broadcast(room, sync.encode_awareness(payload), exclude=conn.id)
+                await self._broadcast(room, sync.encode_awareness(payload))
             await self._backplane.publish(room.workspace_id, "awareness", payload)
             return
 

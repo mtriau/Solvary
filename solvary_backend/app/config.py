@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     execution_user_concurrency: int = 2  # concurrent jobs per user
     execution_user_rate_per_min: int = 30
 
+    # Mock interviews: submissions arriving this long after ends_at still
+    # count (network slack); the clock itself is never extended
+    interview_grace_s: int = 3
+
     # Job queue + SSE broker + execution quota: "memory" (single instance)
     # or "redis" (shared across replicas)
     queue_backend: str = "memory"
@@ -41,14 +45,22 @@ class Settings(BaseSettings):
     ws_snapshot_interval_updates: int = 200  # compact snapshot every N updates
     ws_max_message_bytes: int = 1_000_000
 
-    # LLM provider for the AI assistant: "mock", "openai", "anthropic"
+    # LLM provider for the AI assistant (POST /v1/assist/explain):
+    #   "mock"   — canned streamed replies, no network (dev/tests)
+    #   "openai" — any OpenAI-compatible /chat/completions endpoint: the
+    #              matt_llm/serve.py model on :8001, vLLM, OpenAI, Groq…
     llm_provider: str = "mock"
-    llm_base_url: str = "http://localhost:8001/v1"  # vLLM / OpenAI-compatible endpoint
-    llm_api_key: str = "no-key"  # "no-key" for local vLLM, real key for cloud APIs
-    llm_model: str = "local-model"  # model name — vLLM uses the path you served
+    llm_base_url: str = "http://localhost:8001/v1"
+    llm_api_key: str = "no-key"  # "no-key" for local servers, real key for cloud APIs
+    llm_model: str = "matt-gpt"  # model name as the server registers it
     llm_max_tokens: int = 1024
     llm_temperature: float = 0.7
-    llm_system_prompt: str = "You are the Solvary assistant, a helpful coding tutor."
+    llm_system_prompt: str = (
+        "You are the Solvary assistant, a patient coding tutor on a competitive-"
+        "programming platform. Help the user understand the problem and debug their"
+        " own approach. Prefer hints and questions over full solutions; only give a"
+        " complete solution when explicitly asked. Be concise and use Markdown."
+    )
 
 
 @lru_cache

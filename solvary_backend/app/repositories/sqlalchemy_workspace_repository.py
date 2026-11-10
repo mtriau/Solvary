@@ -34,6 +34,7 @@ class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
                 owner_id=entity.owner_id,
                 language=entity.language,
                 problem_id=entity.problem_id,
+                kind=entity.kind,
                 created_at=entity.created_at,
                 updated_at=entity.updated_at,
             )
@@ -65,6 +66,7 @@ class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
             owner_id=row.owner_id,
             language=row.language,
             problem_id=row.problem_id,
+            kind=row.kind,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

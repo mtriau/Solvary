@@ -45,6 +45,8 @@ class ExecJob:
     stdin: str = ""  # ad-hoc run input
     time_limit_s: float = 5.0
     memory_kb: int = 256_000
+    # pytest judging (see pytest_harness.py): run the provided suite in one go
+    harness: dict | None = None
 
 
 @dataclass

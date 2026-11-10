@@ -12,6 +12,7 @@ COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app
 COPY scripts ./scripts
+COPY content ./content
 
 USER solvary
 
@@ -23,6 +24,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
 
 # Migrations run before the server starts: production is migrations-only
 # (lifespan create_all is disabled when ENVIRONMENT=production).
-# Single worker by design — the job queue, SSE broker, and collab rooms are
-# in-process until the Redis backplane lands (design phase 2).
+# Single uvicorn worker per container; scale by running more containers
+# (`docker compose up --scale backend=N`) with QUEUE_BACKEND=redis and
+# REALTIME_BACKPLANE=redis so queue, SSE broker, quotas, rate limits and
+# collab rooms are shared across replicas.
 CMD ["sh", "-c", "python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8010"]

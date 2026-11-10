@@ -74,6 +74,7 @@ class ProblemService:
             starter_code=data.starter_code,
             function_signature=data.function_signature,
             judge_mode=data.judge_mode,
+            harness=data.harness,
             time_limit_s=data.time_limit_s,
             memory_kb=data.memory_kb,
             editorial_md=data.editorial_md,
@@ -154,6 +155,7 @@ class ProblemService:
             time_limit_s=p.time_limit_s,
             memory_kb=p.memory_kb,
             sample_testcases=samples,
+            harness_files=dict(p.harness.get("files") or {}) if p.harness else None,
         )
 
     @staticmethod

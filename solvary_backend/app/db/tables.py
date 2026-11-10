@@ -54,6 +54,7 @@ class ProblemRow(Base, TimestampMixin):
     starter_code: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     function_signature: Mapped[str | None] = mapped_column(String(500), nullable=True)
     judge_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="stdio")
+    harness: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     time_limit_s: Mapped[float] = mapped_column(Float, nullable=False, default=5.0)
     memory_kb: Mapped[int] = mapped_column(Integer, nullable=False, default=256_000)
     editorial_md: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -103,6 +104,11 @@ class SubmissionRow(Base, TimestampMixin):
         String(36), ForeignKey("problems.id", ondelete="CASCADE"), nullable=False
     )
     workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    interview_session_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("interview_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     language: Mapped[str] = mapped_column(String(30), nullable=False)
     code: Mapped[str] = mapped_column(Text, nullable=False)
     verdict: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
@@ -115,6 +121,7 @@ class SubmissionRow(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_submissions_user_created", "user_id", "created_at"),
         Index("ix_submissions_problem_verdict", "problem_id", "verdict"),
+        Index("ix_submissions_interview_session", "interview_session_id", "created_at"),
     )
 
 
@@ -130,6 +137,9 @@ class WorkspaceRow(Base, TimestampMixin):
     problem_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("problems.id", ondelete="SET NULL"), nullable=True
     )
+    # "standard" | "interview" — interview workspaces are owned by a mock
+    # interview session and hidden from the workspaces list
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="standard")
 
     members: Mapped[list["WorkspaceMemberRow"]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"
@@ -229,3 +239,78 @@ class RefreshTokenRow(Base):
     )
 
     __table_args__ = (Index("ix_refresh_tokens_user", "user_id"),)
+
+
+# ── Mock interviews (SOLVARY_INTERVIEWS_DESIGN.md §4) ─────────────
+
+
+class InterviewTemplateRow(Base, TimestampMixin):
+    __tablename__ = "interview_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    format: Mapped[str] = mapped_column(String(20), nullable=False)  # levels | questions
+    duration_s: Mapped[int] = mapped_column(Integer, nullable=False)
+    advance: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
+    pacing: Mapped[str] = mapped_column(String(20), nullable=False, default="coached")
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    stages: Mapped[list["InterviewStageRow"]] = relationship(
+        back_populates="template", cascade="all, delete-orphan"
+    )
+
+
+class InterviewStageRow(Base):
+    __tablename__ = "interview_stages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    template_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    problem_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("problems.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    budget_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    template: Mapped["InterviewTemplateRow"] = relationship(back_populates="stages")
+
+    __table_args__ = (
+        UniqueConstraint("template_id", "ordinal", name="uq_interview_stages_template_ordinal"),
+        UniqueConstraint("template_id", "problem_id", name="uq_interview_stages_template_problem"),
+    )
+
+
+class InterviewSessionRow(Base, TimestampMixin):
+    __tablename__ = "interview_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    template_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_templates.id", ondelete="RESTRICT"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    language: Mapped[str] = mapped_column(String(30), nullable=False, default="python")
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_stage: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    unlocked_through: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    stage_files: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    timeline: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    __table_args__ = (
+        Index("ix_interview_sessions_user_created", "user_id", "created_at"),
+        Index("ix_interview_sessions_user_status", "user_id", "status"),
+    )
