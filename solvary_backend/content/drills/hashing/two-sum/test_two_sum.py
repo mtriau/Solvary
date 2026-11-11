@@ -26,6 +26,17 @@ def test_earliest_second_index_wins():
     assert two_sum([5, 3, 4, 2], 7) == (1, 2)
 
 
+def test_indices_refer_to_the_original_order():
+    assert two_sum([11, 7, 2], 9) == (1, 2)
+    assert two_sum([5, 1, 4, 3], 8) == (0, 3)
+
+
+def test_input_is_not_modified():
+    nums = [4, 2, 3, 1]
+    two_sum(nums, 5)
+    assert nums == [4, 2, 3, 1]
+
+
 def test_linear_time():
     nums = list(range(100_000))
     assert two_sum(nums, 199_997) == (99_998, 99_999)
