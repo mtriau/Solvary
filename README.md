@@ -8,7 +8,7 @@
 
 - **Problems & judging** — a problem catalog (statement, starter code, sample + hidden tests) with real sandboxed execution via [Piston](https://github.com/engineer-man/piston). Verdicts stream live over SSE: `queued → running → test 3/4 → Accepted (12ms)`.
 - **Mock interviews** — timed, multi-stage take-home style screens (markdown chunker, message history, …) judged with real `pytest` test files shown to the candidate. Stages advance on green tests, the clock keeps running, and a review page replays every stage with the submitted code and an AI code review. Ships with reconstructed Perplexity and Sierra practice sets.
-- **Drills** — 32 tiny exercises grouped by idiom (comprehensions, `Counter`/`defaultdict`, sorting keys, `zip`/`enumerate`, slicing, generators, EAFP/walrus/dataclasses). Each enforces the idiom behaviourally where it can and reveals a worked solution once your tests pass.
+- **Drills** — 62 tiny exercises in 14 topics: Python idioms (comprehensions, `Counter`/`defaultdict`, sorting keys, `zip`/`enumerate`, slicing, generators, EAFP/walrus/dataclasses) and interview building blocks (hash-map tricks, stacks and queues, loop exit conditions, two pointers and windows, graph skeletons, recursion and backtracking). Each enforces the idiom behaviourally where it can (linear-time inputs, recursion-depth chains, call counting) and reveals a worked solution once your tests pass.
 - **Collaborative workspaces** — multiple people editing the same code simultaneously (CRDT via [Yjs](https://yjs.dev) + Monaco), with presence cursors, role-based access (owner/editor/viewer), and server-authoritative file management.
 - **Challenge attempts = the two combined** — bind a problem to a workspace and pair-solve it: starter code seeded server-side, any editor can submit, and every member watches the same verdict stream live (pair-interview mode, essentially).
 - **No boilerplate imports** — every Python run gets `Counter`, `defaultdict`, `deque`, `heapq`, `bisect`, `itertools`, `functools`, `math`, `typing` and friends preloaded, the way LeetCode does; an **Auto-imports** button lists them.
@@ -61,7 +61,7 @@ python -m venv .venv
 .venv/Scripts/python -m alembic upgrade head
 .venv/Scripts/python -m scripts.seed_admin       # admin@solvary.dev / admin123
 .venv/Scripts/python -m scripts.seed_problems    # starter catalog
-.venv/Scripts/python -m scripts.seed_drills      # 32 idiomatic-Python drills
+.venv/Scripts/python -m scripts.seed_drills      # 62 Python idiom + algorithm-skeleton drills
 .venv/Scripts/python -m scripts.seed_interviews  # mock interview + practice sets
 .venv/Scripts/python -m scripts.seed_perplexity
 .venv/Scripts/python -m scripts.seed_sierra

@@ -13,7 +13,7 @@ The four modes in the top nav:
 | Mode | What it is | Section |
 |---|---|---|
 | **Problems** | LeetCode-style catalogue: Run, Submit, verdict stream, Ask AI, past submissions with code | [Ad-hoc Run](#ad-hoc-run), [AI assistant](#ai-assistant) |
-| **Drills** | 32 two-minute Python idiom exercises with a gated idiomatic solution and notes | [Drills](#drills) |
+| **Drills** | 62 two-minute Python idiom and algorithm-skeleton exercises with a gated idiomatic solution and notes | [Drills](#drills) |
 | **Workspaces** | Live multi-user editing (Yjs) with RBAC; bind one to a problem to solve together | [Collaborative workspaces](#collaborative-workspaces-m3), [Challenge attempts](#challenge-attempts-m4) |
 | **Interviews** | Timed, staged mock interviews (Perplexity and Sierra practice sets), review with editorials and your code | [Mock interviews](#mock-interviews) |
 
@@ -27,7 +27,7 @@ python -m venv .venv
 .venv\Scripts\python -m alembic upgrade head
 .venv\Scripts\python -m scripts.seed_admin        # admin@solvary.dev / admin123
 .venv\Scripts\python -m scripts.seed_problems     # two-sum, fizzbuzz, mean-of-list
-.venv\Scripts\python -m scripts.seed_drills       # the 32 idiom drills
+.venv\Scripts\python -m scripts.seed_drills       # the 62 drills
 .venv\Scripts\python -m scripts.seed_interviews   # kv-store-levels + warmup-questions
 .venv\Scripts\python -m scripts.seed_perplexity   # Perplexity coding-screen set
 .venv\Scripts\python -m scripts.seed_sierra       # Sierra phone-screen set
@@ -247,10 +247,13 @@ about this part** on the interview review page, are the UI.
 
 ## Drills
 
-Quick Python idiom exercises (`/drills` in the UI): 32 two-minute problems in
-eight topics (comprehensions, strings, dicts & collections, sorting,
-iteration, slicing & unpacking, generators & itertools, pythonic patterns).
-Solve one, and the idiomatic solution opens with notes on why it is written
+Quick Python exercises (`/drills` in the UI): 62 two-minute problems in 14
+topics. Eight are language idioms (comprehensions, strings, dicts &
+collections, sorting, iteration, slicing & unpacking, generators & itertools,
+pythonic patterns); six are interview building blocks meant to be typed
+without thinking so the attention goes to design and explanation (hash-map
+idioms, stacks & queues, loops & exit conditions, two pointers & windows,
+graph skeletons, recursion & backtracking). Solve one, and the idiomatic solution opens with notes on why it is written
 that way; the habits come from the comparison. The solution can also be
 revealed early. The list page tracks progress per topic and **Continue**
 jumps to the first unsolved drill; inside a drill, **Next drill** goes to the
@@ -266,7 +269,9 @@ the title, `<module>.py` stub, `reference.py`, `test_<module>.py`,
 `NOTES.md`) with a per-topic `ORDER` file; topics are described in
 `app/services/drill_service.py`. Where possible the suites enforce the idiom
 behaviourally (laziness via generators that fail if read too far, `is True`,
-non-mutation, a plain `dict`, `FrozenInstanceError`).
+non-mutation, a plain `dict`, `FrozenInstanceError`; for the algorithm
+drills, inputs sized so only the linear or logarithmic solution finishes,
+chains longer than the recursion limit, and counted callbacks).
 `tests/test_drills_content.py` keeps every reference green and every stub
 red; `tests/test_drills.py` covers the API.
 

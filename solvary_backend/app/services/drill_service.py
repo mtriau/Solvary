@@ -47,6 +47,37 @@ TOPICS: list[Topic] = [
         "yield, accumulate, groupby, zip on shifted slices.",
     ),
     Topic("patterns", "Pythonic patterns", "EAFP, the walrus, dataclasses, dunder methods."),
+    # Interview building blocks: idioms and algorithm skeletons to type without thinking.
+    Topic(
+        "hashing",
+        "Hash-map idioms",
+        "seen sets, complement lookups, canonical keys, prefix sums.",
+    ),
+    Topic(
+        "stacks-queues",
+        "Stacks & queues",
+        "Bracket matching, monotonic stacks, dispatch dicts, deque.",
+    ),
+    Topic(
+        "loops",
+        "Loops & exit conditions",
+        "divmod loops, iter with a sentinel, bounded retries, binary search.",
+    ),
+    Topic(
+        "pointers",
+        "Two pointers & windows",
+        "Write indexes, converging pointers, grow-and-shrink windows.",
+    ),
+    Topic(
+        "graphs",
+        "Graph skeletons",
+        "Adjacency from edges, BFS, iterative DFS, Kahn's algorithm.",
+    ),
+    Topic(
+        "recursion",
+        "Recursion & backtracking",
+        "Base cases first, functools.cache, choose/explore/un-choose.",
+    ),
 ]
 TOPIC_BY_SLUG = {t.slug: t for t in TOPICS}
 _TOPIC_RANK = {t.slug: i for i, t in enumerate(TOPICS)}
