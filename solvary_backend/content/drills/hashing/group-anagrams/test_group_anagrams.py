@@ -22,5 +22,11 @@ def test_empty_strings_group_together():
     assert group_anagrams(["", "x", ""]) == [["", ""], ["x"]]
 
 
+def test_groups_follow_first_appearance_not_size_or_alphabet():
+    words = ["bat", "tan", "nat", "eat", "tea", "ate"]
+    assert group_anagrams(words) == [["bat"], ["tan", "nat"], ["eat", "tea", "ate"]]
+    assert group_anagrams(["zz", "ab", "ba", "z", "yy"]) == [["zz"], ["ab", "ba"], ["z"], ["yy"]]
+
+
 def test_case_sensitive():
     assert group_anagrams(["Ab", "bA", "ab"]) == [["Ab", "bA"], ["ab"]]
