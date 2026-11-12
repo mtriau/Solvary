@@ -1,6 +1,6 @@
 # Count connected components
 
-`graph` maps each node to its neighbours in an undirected graph (every node appears as a key). Return the number of connected components. The graph may contain long chains, so recursion is not an option.
+`graph` maps each node to its neighbours in an undirected graph (every node appears as a key). Return the number of connected components: the islands of the graph, where a component is a maximal group of nodes that can all reach each other. An isolated node is a component of size one, so three nodes with no edges are three components. The graph may contain long chains, so recursion is not an option.
 
 ### Signature
 
