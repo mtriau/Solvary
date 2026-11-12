@@ -130,6 +130,20 @@ SPECS: list[Spec] = [
         ],
         "Backoff loop with injected clock; path-set DFS for the tree, BFS for reachability",
     ),
+    Spec(
+        "event_streams",
+        "Event Streams: merge, go live, deferred delivery",
+        "medium",
+        ["heap", "streams", "generators"],
+        30,
+        [
+            ("Merge sorted event lists", 8),
+            ("Lazy k-way merge over live iterators", 12),
+            ("Deferred delivery", 10),
+        ],
+        "Heap of (ts, stream_index, event, iterator), one head per stream; second heap keyed by"
+        " due time, released once the input ts reaches it",
+    ),
 ]
 
 

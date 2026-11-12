@@ -313,7 +313,7 @@ Practice sets (all pytest mode, seeded private):
 ```powershell
 .venv\Scripts\python -m scripts.seed_interviews   # kv-store-levels (90 min, 4 levels) + warmup-questions (60 min)
 .venv\Scripts\python -m scripts.seed_perplexity   # Perplexity coding-screen set: six multi-part levels + a tier-2 questions set
-.venv\Scripts\python -m scripts.seed_sierra       # Sierra phone-screen set (7 x 3 parts, 25–30 min)
+.venv\Scripts\python -m scripts.seed_sierra       # Sierra phone-screen set (8 x 3 parts, 25–30 min)
 .venv\Scripts\python -m scripts.seed_sierra --refresh   # re-read content/sierra_prep: update statements, editorials, stubs in place
 ```
 
