@@ -8,8 +8,10 @@ must restore the cursor too.
 - `cursor() -> int`: the cursor position, from `0` (before the first
   character) to `len(text())` (after the last). A fresh keyboard has cursor
   `0`.
-- `move_left(n: int = 1)`, `move_right(n: int = 1)`, `home()`, `end()`:
-  move the cursor, clamped to the buffer.
+- `move_left(n: int = 1)`, `move_right(n: int = 1)`: move the cursor by
+  `n`, clamped to the buffer.
+- `home()`, `end()`: like the Home and End keys. `home()` moves the cursor
+  to `0`; `end()` moves it to `len(text())`.
 - `delete(n: int = 1) -> None` (new): remove up to `n` characters **after**
   the cursor. The cursor does not move.
 
