@@ -62,6 +62,18 @@ class Settings(BaseSettings):
         " complete solution when explicitly asked. Be concise and use Markdown."
     )
 
+    # Interviewer agent (SOLVARY_INTERVIEWER_DESIGN.md): an AI interviewer in
+    # the mock-interview page, calling Claude with the user's own API key.
+    #   "anthropic" — the official SDK (keys: per user, else anthropic_api_key)
+    #   "fake"      — scripted replies, no network (tests)
+    interviewer_provider: str = "anthropic"
+    anthropic_api_key: str = ""  # server-wide fallback; a user's stored key wins
+    interviewer_model: str = "claude-sonnet-5-5"
+    interviewer_effort: str = "low"  # low | medium | high — chat-shaped, latency first
+    interviewer_max_tokens: int = 1024
+    interviewer_knows_solutions: bool = True  # reference solutions in the prompt (never revealed)
+    interviewer_idle_s: int = 180  # the page nudges the agent after this much silence
+
 
 @lru_cache
 def get_settings() -> Settings:

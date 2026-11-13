@@ -19,6 +19,8 @@ os.environ["EXECUTION_PROVIDER"] = "mock"  # judge tests rely on mock markers
 os.environ["SECRET_KEY"] = "test-secret-not-for-production"
 os.environ["DB_NULL_POOL"] = "true"  # per-test event loops (see engine.py)
 os.environ["GOOGLE_CLIENT_ID"] = "test-google-client-id"  # enable the endpoint
+os.environ["INTERVIEWER_PROVIDER"] = "fake"  # scripted Claude, no network
+os.environ["ANTHROPIC_API_KEY"] = ""  # tests exercise the no-key path explicitly
 
 import uuid  # noqa: E402
 
@@ -83,13 +85,22 @@ async def _reset_rate_limiters():
     """Auth limiters are process-global; without a reset, the suite's many
     logins (same ASGITransport client IP) would trip the per-IP window."""
     from app.core.rate_limit import (
+        ai_key_test_limiter,
         assist_limiter,
+        interviewer_limiter,
         login_ip_limiter,
         login_limiter,
         signup_limiter,
     )
 
-    for limiter in (login_limiter, login_ip_limiter, signup_limiter, assist_limiter):
+    for limiter in (
+        login_limiter,
+        login_ip_limiter,
+        signup_limiter,
+        assist_limiter,
+        interviewer_limiter,
+        ai_key_test_limiter,
+    ):
         await limiter.reset()
     yield
 

@@ -16,6 +16,7 @@ dependencies = [
     "alembic>=1.14.0",
     "aiosqlite>=0.21.0",
     "httpx>=0.28.0",
+    "anthropic>=1.0",  # interviewer agent (built on httpx2; coexists with httpx)
 ]
 
 [project.optional-dependencies]
@@ -48,3 +49,5 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]
+# The interviewer system prompt is prose; its bytes must stay stable and readable
+"app/services/interviewer_prompt.py" = ["E501"]

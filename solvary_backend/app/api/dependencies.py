@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends
@@ -15,6 +16,7 @@ from app.repositories.interview_repository import (
     InterviewStageRepository,
     InterviewTemplateRepository,
 )
+from app.repositories.interviewer_repository import InterviewerTurnRepository
 from app.repositories.problem_repository import ProblemRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.submission_repository import SubmissionRepository
@@ -27,9 +29,11 @@ from app.repositories.workspace_repository import (
 )
 from app.services.assist_service import AssistService
 from app.services.auth_service import AuthService
+from app.services.claude_client import get_claude_client
 from app.services.collaboration.manager import get_collab_manager
 from app.services.drill_service import DrillService
 from app.services.interview_service import InterviewService
+from app.services.interviewer_service import InterviewerService
 from app.services.llm_service import get_llm_service
 from app.services.problem_service import ProblemService
 from app.services.queue.runtime import ExecutionRuntime, get_runtime
@@ -177,8 +181,9 @@ def get_auth_service(
 
 def get_user_service(
     user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserService:
-    return UserService(user_repo)
+    return UserService(user_repo, settings, get_claude_client())
 
 
 def get_problem_service(
@@ -266,6 +271,20 @@ def get_interview_session_repository(
     return SQLAlchemyInterviewSessionRepository(db)
 
 
+def get_interviewer_turn_repository(
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+) -> InterviewerTurnRepository:
+    if settings.use_mock_db:
+        return mock_registry.mock_interviewer_turn_repo
+    from app.repositories.sqlalchemy_interviewer_repository import (
+        SQLAlchemyInterviewerTurnRepository,
+    )
+
+    assert db is not None
+    return SQLAlchemyInterviewerTurnRepository(db)
+
+
 def get_interview_service(
     template_repo: Annotated[
         InterviewTemplateRepository, Depends(get_interview_template_repository)
@@ -279,6 +298,7 @@ def get_interview_service(
     submission_repo: Annotated[SubmissionRepository, Depends(get_submission_repository)],
     workspace_service: Annotated[WorkspaceService, Depends(get_workspace_service)],
     settings: Annotated[Settings, Depends(get_settings)],
+    turn_repo: Annotated[InterviewerTurnRepository, Depends(get_interviewer_turn_repository)],
 ) -> InterviewService:
     return InterviewService(
         template_repo,
@@ -288,6 +308,46 @@ def get_interview_service(
         testcase_repo,
         submission_repo,
         workspace_service,
+        settings,
+        interviewer_turn_repo=turn_repo,
+    )
+
+
+# ── Interviewer agent (SOLVARY_INTERVIEWER_DESIGN.md) ─────────────
+
+
+@asynccontextmanager
+async def open_interviewer_turn_repository():
+    """A turn repository on its OWN session, for writes that happen inside
+    an SSE stream after the request-scoped session is gone. Commits on exit."""
+    settings = get_settings()
+    if settings.use_mock_db:
+        yield mock_registry.mock_interviewer_turn_repo
+        return
+    from app.db.engine import async_session_factory
+    from app.repositories.sqlalchemy_interviewer_repository import (
+        SQLAlchemyInterviewerTurnRepository,
+    )
+
+    async with async_session_factory() as session:
+        yield SQLAlchemyInterviewerTurnRepository(session)
+        await session.commit()
+
+
+def get_interviewer_service(
+    turn_repo: Annotated[InterviewerTurnRepository, Depends(get_interviewer_turn_repository)],
+    interviews: Annotated[InterviewService, Depends(get_interview_service)],
+    problem_repo: Annotated[ProblemRepository, Depends(get_problem_repository)],
+    testcase_repo: Annotated[TestCaseRepository, Depends(get_testcase_repository)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> InterviewerService:
+    return InterviewerService(
+        turn_repo,
+        open_interviewer_turn_repository,
+        interviews,
+        problem_repo,
+        testcase_repo,
+        get_claude_client(),
         settings,
     )
 

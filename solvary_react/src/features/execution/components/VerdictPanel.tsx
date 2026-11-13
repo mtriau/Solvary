@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Circle, Loader2, XCircle } from 'lucide-react';
 import type { JudgeEvent } from '@/shared/types/api';
+import { failureDetail } from '../lib/failure-detail';
 import type { TestLabel } from '../lib/test-labels';
 
 const VERDICT_LABELS: Record<string, string> = {
@@ -28,12 +29,6 @@ interface VerdictPanelProps {
   error: string | null;
   /** pytest mode: ordinal → test id; switches to a named, expandable list */
   labels?: Record<number, TestLabel> | null;
-}
-
-/** Strip the harness's PASS/FAIL prefix; what is left is the assertion/traceback. */
-function failureDetail(e: JudgeEvent): string {
-  const out = (e.stdout ?? '').replace(/^(PASS|FAIL)\n?/, '').trimEnd();
-  return out || e.message || (e.status === 'tle' ? 'timed out' : 'no output');
 }
 
 function NamedResults({ results, labels }: { results: JudgeEvent[]; labels: Record<number, TestLabel> }) {

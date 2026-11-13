@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.interviewer import InterviewerTurnResponse
 from app.schemas.problems import ProblemDetail
 from app.schemas.submissions import SubmissionResponse
 
@@ -131,3 +132,5 @@ class SessionDetail(SessionSummary):
 
 class SessionReview(SessionDetail):
     submissions: list[SubmissionResponse]
+    # Interviewer agent transcript (SOLVARY_INTERVIEWER_DESIGN.md), oldest first
+    interviewer_turns: list[InterviewerTurnResponse] = []

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Loader2, Play, Send, X } from 'lucide-react';
@@ -12,6 +12,20 @@ import { RunPanel } from '@/features/execution/components/RunPanel';
 import { useJudgeStream } from '@/features/execution/hooks/useJudgeStream';
 import { useRunStream } from '@/features/execution/hooks/useRunStream';
 import { testLabels } from '@/features/execution/lib/test-labels';
+import { InterviewerPane } from '@/features/interviewer/components/InterviewerPane';
+import { useInterviewer } from '@/features/interviewer/hooks/useInterviewer';
+import { useSpeechInput } from '@/features/interviewer/hooks/useSpeechInput';
+import { useSpeechOutput } from '@/features/interviewer/hooks/useSpeechOutput';
+import {
+  NUDGE_EVENT,
+  STARTED_EVENT,
+  budgetEvent,
+  idleEvent,
+  runEvent,
+  stageEvent,
+  verdictEvent,
+} from '@/features/interviewer/lib/events';
+import { buildScreenContext, type ScreenInputs } from '@/features/interviewer/lib/screen-context';
 import { StagePanel } from '@/features/interviews/components/StagePanel';
 import { TimerBar } from '@/features/interviews/components/TimerBar';
 import { useCountdown } from '@/features/interviews/hooks/useCountdown';
@@ -24,9 +38,13 @@ import { ResizeHandle } from '@/shared/components/ResizeHandle';
 import { usePersistedNumber } from '@/shared/hooks/usePersistedNumber';
 import { ApiError } from '@/shared/lib/api-client';
 import { fetchFiles } from '@/shared/lib/api';
-import type { InterviewSessionDetail } from '@/shared/types/api';
+import type { InterviewSessionDetail, MicMode } from '@/shared/types/api';
 
 type Pane = 'judge' | 'run';
+
+const INTERVIEWER_OPEN_KEY = 'interview.interviewerOpen';
+const IDLE_CHECK_MS = 15_000;
+const IDLE_REPEAT_MS = 5 * 60_000;
 
 function detailOf(err: unknown): string {
   if (err instanceof ApiError) {
@@ -60,18 +78,39 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     enabled: !!session.workspace_id,
   });
 
-  const { submit, events, verdict, isJudging, error } = useJudgeStream();
+  const { submit, events, verdict, isJudging, error, submissionId } = useJudgeStream();
   const runState = useRunStream();
   const [pane, setPane] = useState<Pane>('judge');
   const [stdin, setStdin] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [dismissedNudge, setDismissedNudge] = useState<number | null>(null);
+  const [interviewerOpen, setInterviewerOpenState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(INTERVIEWER_OPEN_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const setInterviewerOpen = (open: boolean) => {
+    setInterviewerOpenState(open);
+    try {
+      localStorage.setItem(INTERVIEWER_OPEN_KEY, open ? '1' : '0');
+    } catch {
+      /* private mode */
+    }
+  };
   // Draggable splitters (remembered across sessions)
+  const [rightWidth, setRightWidth, resetRightWidth] = usePersistedNumber(
+    'interview.interviewerWidth',
+    360,
+    280,
+    Math.max(320, window.innerWidth - 760),
+  );
   const [leftWidth, setLeftWidth, resetLeftWidth] = usePersistedNumber(
     'interview.leftWidth',
     Math.round(window.innerWidth * 0.42),
     260,
-    Math.max(400, window.innerWidth - 420),
+    Math.max(400, window.innerWidth - 420 - (interviewerOpen ? rightWidth : 0)),
   );
   const [consoleHeight, setConsoleHeight, resetConsoleHeight] = usePersistedNumber(
     'interview.consoleHeight',
@@ -99,11 +138,6 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage?.problem?.id]);
 
-  // A verdict changes the derived results → refresh the payload
-  useEffect(() => {
-    if (verdict) queryClient.invalidateQueries({ queryKey: INTERVIEW_KEYS.session(session.id) });
-  }, [verdict, queryClient, session.id]);
-
   useEffect(() => {
     if (!active) navigate(`/interviews/sessions/${session.id}/review`, { replace: true });
   }, [active, navigate, session.id]);
@@ -113,6 +147,209 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     const code = collab.doc.getMap<Y.Text>('files').get(fileId)?.toString() ?? '';
     return code.trim() ? code : null;
   };
+
+  const showResults =
+    pane === 'run'
+      ? runState.isRunning || runState.status || runState.error
+      : events.length > 0 || isJudging || error;
+
+  // ── interviewer agent: what it can see, and when it is told ──
+  const lastEditAtRef = useRef<number | null>(null);
+  const lastActivityRef = useRef<number | null>(null); // null until mounted (set below)
+  const judgeAtRef = useRef<number | null>(null);
+  const runAtRef = useRef<number | null>(null);
+  const micModeRef = useRef<MicMode>('off');
+
+  useEffect(() => {
+    lastActivityRef.current ??= Date.now(); // the idle clock starts at mount, not at load time
+  }, []);
+  // Local edits only (remote sync transactions don't count as activity)
+  useEffect(() => {
+    if (!collab) return;
+    const filesMap = collab.doc.getMap<Y.Text>('files');
+    const onDeep = (_events: Y.YEvent<Y.Text>[], transaction: Y.Transaction) => {
+      if (transaction.local) {
+        const now = Date.now();
+        lastEditAtRef.current = now;
+        lastActivityRef.current = now;
+      }
+    };
+    filesMap.observeDeep(onDeep);
+    return () => filesMap.unobserveDeep(onDeep);
+  }, [collab]);
+  useEffect(() => {
+    if (verdict) judgeAtRef.current = Date.now();
+  }, [verdict]);
+  useEffect(() => {
+    if (!runState.isRunning && (runState.status || runState.error)) runAtRef.current = Date.now();
+  }, [runState.isRunning, runState.status, runState.error]);
+
+  // The screen, read at the moment a turn is sent (never stale, never a dependency)
+  const screenRef = useRef<() => Omit<ScreenInputs, 'lastCode'>>(() => ({
+    stage: 1,
+    code: '',
+    judge: { events: [], verdict: null, submissionId: null, at: null, labels: null },
+    run: { state: runState, stdin: '', at: null },
+    pane: 'none',
+    lastEditAt: null,
+    mic: 'off',
+  }));
+  screenRef.current = () => ({
+    stage: session.current_stage,
+    code: currentCode() ?? '',
+    judge: { events, verdict, submissionId, at: judgeAtRef.current, labels },
+    run: { state: runState, stdin, at: runAtRef.current },
+    pane: showResults ? pane : 'none',
+    lastEditAt: lastEditAtRef.current,
+    mic: micModeRef.current,
+  });
+  const buildScreen = useCallback(
+    (lastCode: string | null) => buildScreenContext({ ...screenRef.current(), lastCode }),
+    [],
+  );
+
+  const tts = useSpeechOutput();
+  const interviewer = useInterviewer({
+    sessionId: session.id,
+    enabled: active,
+    buildScreen,
+    onReply: (text) => tts.speak(text),
+  });
+  const { enqueue } = interviewer;
+  const speech = useSpeechInput({
+    onUtterance: (text) => {
+      lastActivityRef.current = Date.now();
+      enqueue({ trigger: 'speech', utterance: text });
+    },
+  });
+  micModeRef.current = speech.mode;
+
+  const keySource = interviewer.transcript?.key_source ?? 'none';
+  const agentEnabled = active && keySource !== 'none' && !interviewer.noKey;
+  const agentEnabledRef = useRef(agentEnabled);
+  agentEnabledRef.current = agentEnabled;
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+  const labelsRef = useRef(labels);
+  labelsRef.current = labels;
+  const streamingRef = useRef(interviewer.streaming);
+  streamingRef.current = interviewer.streaming;
+
+  // The mic never hears the interviewer: paused while the voice plays, and
+  // while a reply streams if the voice is on
+  const micPaused = tts.speaking || (interviewer.streaming && tts.enabled);
+  const { setPaused } = speech;
+  useEffect(() => {
+    setPaused(micPaused);
+  }, [micPaused, setPaused]);
+
+  // Opening line, once, on a fresh session
+  const transcriptLoaded = !!interviewer.transcript;
+  const turnCount = interviewer.turns.length;
+  const openingRef = useRef(false);
+  useEffect(() => {
+    if (!agentEnabled || !transcriptLoaded || openingRef.current) return;
+    openingRef.current = true;
+    if (turnCount === 0) enqueue({ trigger: 'opening', events: [STARTED_EVENT] });
+  }, [agentEnabled, transcriptLoaded, turnCount, enqueue]);
+
+  // A verdict changes the derived results → refresh the payload; tell the interviewer
+  useEffect(() => {
+    if (!verdict) return;
+    queryClient.invalidateQueries({ queryKey: INTERVIEW_KEYS.session(session.id) });
+    if (agentEnabledRef.current) {
+      enqueue({ trigger: 'event', events: [verdictEvent(verdict, eventsRef.current, labelsRef.current)] });
+    }
+  }, [verdict, queryClient, session.id, enqueue]);
+
+  // A Run that crashed or timed out
+  const runEventRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (runState.isRunning || !runState.runId || runEventRef.current === runState.runId) return;
+    if ((runState.status && runState.status !== 'finished') || runState.error) {
+      runEventRef.current = runState.runId;
+      if (agentEnabledRef.current) enqueue({ trigger: 'event', events: [runEvent(runState)] });
+    }
+  }, [runState, enqueue]);
+
+  // Stage advanced or switched
+  const prevStageRef = useRef(session.current_stage);
+  useEffect(() => {
+    if (prevStageRef.current === session.current_stage) return;
+    prevStageRef.current = session.current_stage;
+    if (stage && agentEnabledRef.current) enqueue({ trigger: 'event', events: [stageEvent(stage)] });
+  }, [session.current_stage, stage, enqueue]);
+
+  // ── pacing nudges ──
+  const budget = stage?.budget_s ?? null;
+  const overBudget = budget != null && stageElapsedS > budget;
+  const lockedBudgetS = session.stages
+    .filter((s) => s.ordinal > session.current_stage)
+    .reduce((acc, s) => acc + (s.budget_s ?? 0), 0);
+  const pointOfNoReturn = lockedBudgetS > 0 && countdown.remainingS < lockedBudgetS;
+  const partsLeft = session.stages.length - session.current_stage;
+  const showNudge =
+    active && overBudget && partsLeft > 0 && (pointOfNoReturn || dismissedNudge !== session.current_stage);
+
+  // Budget exceeded: once per stage
+  const budgetFiredRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!overBudget || !stage || budgetFiredRef.current === session.current_stage) return;
+    budgetFiredRef.current = session.current_stage;
+    if (agentEnabledRef.current) {
+      enqueue({ trigger: 'event', events: [budgetEvent(stage, stageElapsedS)] });
+    }
+  }, [overBudget, stage, session.current_stage, stageElapsedS, enqueue]);
+
+  // Idle: no speech, typing or code change for idle_s (at most once per 5 min)
+  const idleS = interviewer.transcript?.idle_s ?? 180;
+  useEffect(() => {
+    if (!agentEnabled) return;
+    let lastIdleEvent = 0;
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      const lastActivity = lastActivityRef.current ?? now;
+      if (
+        !streamingRef.current &&
+        now - lastActivity >= idleS * 1000 &&
+        now - lastIdleEvent >= IDLE_REPEAT_MS
+      ) {
+        lastIdleEvent = now;
+        enqueue({ trigger: 'event', events: [idleEvent(idleS)] });
+      }
+    }, IDLE_CHECK_MS);
+    return () => window.clearInterval(id);
+  }, [agentEnabled, idleS, enqueue]);
+
+  // Keyboard: Ctrl+Shift+M toggles the mic, Ctrl+Shift+Space is push-to-talk.
+  // Skipped when the editor already handled the chord (defaultPrevented).
+  const lastMicModeRef = useRef<MicMode>('open');
+  useEffect(() => {
+    if (speech.mode !== 'off') lastMicModeRef.current = speech.mode;
+  }, [speech.mode]);
+  const { mode: micMode, setMode: setMicMode, pressStart, pressEnd, supported: micSupported } = speech;
+  useEffect(() => {
+    if (!micSupported) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return;
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        setMicMode(micMode === 'off' ? lastMicModeRef.current : 'off');
+      } else if (e.code === 'Space' && micMode === 'push' && !e.repeat) {
+        e.preventDefault();
+        pressStart();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && micMode === 'push') pressEnd();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [micSupported, micMode, setMicMode, pressStart, pressEnd]);
 
   const onRun = () => {
     const code = currentCode();
@@ -143,22 +380,6 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
   };
   const busy = advance.isPending || switchStage.isPending || finish.isPending || abandon.isPending;
 
-  // ── pacing nudges ──
-  const budget = stage?.budget_s ?? null;
-  const overBudget = budget != null && stageElapsedS > budget;
-  const lockedBudgetS = session.stages
-    .filter((s) => s.ordinal > session.current_stage)
-    .reduce((acc, s) => acc + (s.budget_s ?? 0), 0);
-  const pointOfNoReturn = lockedBudgetS > 0 && countdown.remainingS < lockedBudgetS;
-  const partsLeft = session.stages.length - session.current_stage;
-  const showNudge =
-    active && overBudget && partsLeft > 0 && (pointOfNoReturn || dismissedNudge !== session.current_stage);
-
-  const showResults =
-    pane === 'run'
-      ? runState.isRunning || runState.status || runState.error
-      : events.length > 0 || isJudging || error;
-
   return (
     <div className="h-full flex flex-col">
       <TimerBar
@@ -166,6 +387,8 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
         countdown={countdown}
         stageElapsedS={stageElapsedS}
         busy={busy}
+        interviewerOpen={interviewerOpen}
+        onToggleInterviewer={() => setInterviewerOpen(!interviewerOpen)}
         onFinish={() => {
           if (window.confirm('Stop the clock and finish the interview now?')) {
             void act(() => finish.mutateAsync());
@@ -321,6 +544,30 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
             </>
           )}
         </div>
+
+        {interviewerOpen && (
+          <>
+            <ResizeHandle
+              direction="col"
+              onDrag={(dx) => setRightWidth((w) => w - dx)}
+              onDoubleClick={resetRightWidth}
+            />
+            <div className="bg-white flex flex-col min-h-0 shrink-0" style={{ width: rightWidth }}>
+              <InterviewerPane
+                interviewer={interviewer}
+                speech={speech}
+                tts={tts}
+                active={active}
+                onSend={(text) => {
+                  lastActivityRef.current = Date.now();
+                  enqueue({ trigger: 'typed', utterance: text });
+                }}
+                onNudge={() => enqueue({ trigger: 'event', events: [NUDGE_EVENT] })}
+                onCollapse={() => setInterviewerOpen(false)}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

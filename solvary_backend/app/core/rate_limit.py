@@ -102,6 +102,10 @@ login_ip_limiter = _make_limiter("login-ip", limit=30, window_s=300)
 signup_limiter = _make_limiter("signup", limit=20, window_s=300)
 # AI assistant: 20 questions / min per user (each one is an LLM call)
 assist_limiter = _make_limiter("assist", limit=20, window_s=60)
+# Interviewer agent: 40 turns / min per user (speech turns are frequent;
+# event turns are coalesced client-side) + 5 key tests / min
+interviewer_limiter = _make_limiter("interviewer", limit=40, window_s=60)
+ai_key_test_limiter = _make_limiter("ai-key-test", limit=5, window_s=60)
 
 
 def client_ip(request: Request) -> str:

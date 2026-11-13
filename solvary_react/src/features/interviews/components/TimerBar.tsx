@@ -1,4 +1,4 @@
-import { CheckCircle2, Flag, Lock, Timer, XCircle } from 'lucide-react';
+import { CheckCircle2, Flag, Lock, MessageSquare, Timer, XCircle } from 'lucide-react';
 import type { InterviewSessionDetail } from '@/shared/types/api';
 import type { Countdown } from '../hooks/useCountdown';
 import { fmtClock } from '../lib/format';
@@ -11,6 +11,9 @@ interface Props {
   onFinish: () => void;
   onAbandon: () => void;
   busy?: boolean;
+  /** Interviewer pane toggle (omitted → no button). */
+  interviewerOpen?: boolean;
+  onToggleInterviewer?: () => void;
 }
 
 const PHASE_STYLES: Record<string, string> = {
@@ -24,7 +27,16 @@ const PHASE_STYLES: Record<string, string> = {
  * Sticky header: the interview clock, overall progress, one chip per stage
  * (locked / current with budget / best score), finish & abandon.
  */
-export function TimerBar({ session, countdown, stageElapsedS, onFinish, onAbandon, busy }: Props) {
+export function TimerBar({
+  session,
+  countdown,
+  stageElapsedS,
+  onFinish,
+  onAbandon,
+  busy,
+  interviewerOpen,
+  onToggleInterviewer,
+}: Props) {
   const total = session.duration_s;
   const usedPct = Math.min(100, ((total - countdown.remainingS) / total) * 100);
   const current = session.stages.find((s) => s.ordinal === session.current_stage);
@@ -87,6 +99,20 @@ export function TimerBar({ session, countdown, stageElapsedS, onFinish, onAbando
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {onToggleInterviewer && (
+            <button
+              onClick={onToggleInterviewer}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border ${
+                interviewerOpen
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+              title={interviewerOpen ? 'Hide the interviewer pane' : 'Show the interviewer pane'}
+              aria-pressed={interviewerOpen}
+            >
+              <MessageSquare size={12} /> Interviewer
+            </button>
+          )}
           <button
             onClick={onAbandon}
             disabled={busy}

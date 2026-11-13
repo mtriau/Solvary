@@ -1,8 +1,10 @@
 # Solvary — Mock Interview Mode (design addendum, draft v0.1)
 
 Date: 2026-11-04. Status: **accepted and implemented (I1 + I2, 2026-11-04)**; the
-`SOLVARY_DESIGN.md` v2.3 changelog entry points here. I3 (interviewer mode) is not
-built. Implementation notes that differ from the draft: `switch` is `questions`-only
+`SOLVARY_DESIGN.md` v2.3 changelog entry points here. I3 (a second human as
+interviewer) was superseded by the **AI interviewer** of
+`SOLVARY_INTERVIEWER_DESIGN.md` (implemented 2026-11-12). Implementation notes that
+differ from the draft: `switch` is `questions`-only
 (in `levels` earlier statements stay readable in the payload, so no server round
 trip is needed to re-read them); strict `levels` auto-advance is applied lazily on
 any touch, stamped at the deadline; admin `POST /v1/interviews/templates` landed
@@ -360,11 +362,11 @@ thresholds, single `onExpire`). Build + lint in CI as today.
 - **I2 — Pacing coach.** Budgets in the TimerBar, nudges, point-of-no-return,
   strict pacing, pace timeline + diagnosis on review, history list, two badges,
   in-progress pill in the top bar.
-- **I3 — Interviewer mode.** Add a second member to the session workspace as `viewer`
-  (an "interviewer"); they see the live buffer and verdict stream (already works via
-  awareness) and get a **Release next part** button (`advance` authorized for the
-  interviewer role). Timer shared because it's server state. Optional live chat is
-  the existing phase-2 "workspace chat" item.
+- **I3 — Interviewer mode.** *Superseded (2026-11-12)* by the AI interviewer pane in
+  `SOLVARY_INTERVIEWER_DESIGN.md`: a Claude-backed agent that sees the screen,
+  listens to the microphone and speaks when an interviewer would. The original idea
+  (a second human as `viewer` with a **Release next part** button) remains possible
+  on top of the existing awareness/presence plumbing but is no longer planned.
 - **Later.** AI-generated templates ("make me a 4-level problem about rate limiters"),
   function-signature judging for LeetCode-style `questions` interviews, Java/C++.
 

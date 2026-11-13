@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, BookOpen, Code2, ExternalLink, Loader2, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Code2, ExternalLink, Loader2, MessageSquare, RotateCcw, Sparkles } from 'lucide-react';
 import { AssistPanel } from '@/features/assist/components/AssistPanel';
 import { SubmissionCode } from '@/features/execution/components/SubmissionCode';
+import { TranscriptList } from '@/features/interviewer/components/TranscriptList';
 import { PaceTimeline } from '@/features/interviews/components/PaceTimeline';
 import {
   useInterviewReview,
@@ -135,6 +136,23 @@ export default function InterviewReviewPage() {
             Bar = time on the part, dashed line = its budget, ticks = submissions (green accepted).
           </p>
         </div>
+
+        {review.interviewer_turns.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={14} className="text-indigo-600" />
+              <h2 className="text-sm font-semibold text-gray-900">Interviewer transcript</h2>
+              <span className="text-[11px] text-gray-400">
+                {review.interviewer_turns.filter((t) => t.role === 'assistant' && !t.silent).length} replies
+                {' · '}
+                {review.interviewer_turns.filter((t) => t.role === 'user' && (t.trigger === 'speech' || t.trigger === 'typed')).length} from you
+              </span>
+            </div>
+            <div className="max-h-[32rem] overflow-y-auto pr-1">
+              <TranscriptList turns={review.interviewer_turns} compact />
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-900">Parts</h2>

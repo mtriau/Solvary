@@ -6,6 +6,7 @@ from app.api.v1 import (
     routes_drills,
     routes_execution,
     routes_health,
+    routes_interviewer,
     routes_interviews,
     routes_problems,
     routes_stats,
@@ -26,4 +27,5 @@ api_router.include_router(routes_execution.router)
 api_router.include_router(routes_workspaces.router)
 api_router.include_router(routes_assist.router)
 api_router.include_router(routes_interviews.router)
+api_router.include_router(routes_interviewer.router)
 api_router.include_router(routes_drills.router)

@@ -1,7 +1,10 @@
 import { apiClient } from './api-client';
 import type {
+  AiKeyStatus,
+  AiKeyTestResult,
   DrillDetail,
   DrillList,
+  InterviewerTranscript,
   InterviewSessionDetail,
   InterviewSessionReview,
   InterviewSessionSummary,
@@ -229,6 +232,33 @@ export async function abandonInterview(id: string): Promise<InterviewSessionDeta
 
 export async function fetchInterviewReview(id: string): Promise<InterviewSessionReview> {
   return apiClient.get(`/v1/interviews/sessions/${id}/review`);
+}
+
+// ── Interviewer agent ─────────────────────────────────────────────
+// The turn POST is an SSE stream and lives in features/interviewer/hooks/useInterviewer.ts
+
+export async function fetchAiKey(): Promise<AiKeyStatus> {
+  return apiClient.get('/users/me/ai-key');
+}
+
+export async function setAiKey(api_key: string): Promise<AiKeyStatus> {
+  return apiClient.put('/users/me/ai-key', { api_key });
+}
+
+export async function clearAiKey(): Promise<AiKeyStatus> {
+  return apiClient.delete('/users/me/ai-key');
+}
+
+export async function testAiKey(): Promise<AiKeyTestResult> {
+  return apiClient.post('/users/me/ai-key/test');
+}
+
+export async function fetchInterviewerTurns(sessionId: string): Promise<InterviewerTranscript> {
+  return apiClient.get(`/v1/interviews/sessions/${sessionId}/interviewer/turns`);
+}
+
+export async function clearInterviewerTurns(sessionId: string): Promise<void> {
+  return apiClient.delete(`/v1/interviews/sessions/${sessionId}/interviewer/turns`);
 }
 
 // ── Stats ─────────────────────────────────────────────────────────

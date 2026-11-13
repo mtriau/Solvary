@@ -34,3 +34,10 @@ class BadRequestException(AppException):
 class ConflictException(AppException):
     def __init__(self, detail: str = "Conflict"):
         super().__init__(status_code=409, detail=detail, error_code="CONFLICT")
+
+
+class PaymentRequiredException(AppException):
+    """No API key for a bring-your-own-key feature (the interviewer agent)."""
+
+    def __init__(self, detail: str = "No API key configured"):
+        super().__init__(status_code=402, detail=detail, error_code="NO_API_KEY")

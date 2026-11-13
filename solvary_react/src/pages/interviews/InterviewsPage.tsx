@@ -6,6 +6,7 @@ import {
   useInterviewTemplates,
   useStartInterview,
 } from '@/features/interviews/hooks/useInterviewSession';
+import { ApiKeyCard } from '@/features/interviewer/components/ApiKeyCard';
 import { useActiveInterview } from '@/features/interviews/hooks/useActiveInterview';
 import { useCountdown } from '@/features/interviews/hooks/useCountdown';
 import { FORMAT_LABELS, STATUS_LABELS, fmtClock, fmtMinutes } from '@/features/interviews/lib/format';
@@ -165,6 +166,7 @@ export default function InterviewsPage() {
         </div>
 
         {active && <ActiveBanner active={active} />}
+        <ApiKeyCard />
         {error && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
             {error}

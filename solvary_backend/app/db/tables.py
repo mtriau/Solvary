@@ -38,6 +38,9 @@ class UserRow(Base, TimestampMixin):
     google_sub: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True
     )
+    # Interviewer agent: the user's Anthropic key, Fernet-encrypted (core/secrets.py)
+    anthropic_api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    anthropic_api_key_last4: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
 
 class ProblemRow(Base, TimestampMixin):
@@ -313,4 +316,38 @@ class InterviewSessionRow(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_interview_sessions_user_created", "user_id", "created_at"),
         Index("ix_interview_sessions_user_status", "user_id", "status"),
+    )
+
+
+# ── Interviewer agent (SOLVARY_INTERVIEWER_DESIGN.md §6) ──────────
+
+
+class InterviewerTurnRow(Base):
+    __tablename__ = "interviewer_turns"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # user | assistant
+    trigger: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    digest: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    silent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_read_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_creation_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "ordinal", name="uq_interviewer_turns_session_ordinal"),
+        Index("ix_interviewer_turns_session_ordinal", "session_id", "ordinal"),
     )

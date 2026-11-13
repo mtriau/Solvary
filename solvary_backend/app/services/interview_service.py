@@ -31,6 +31,7 @@ from app.repositories.interview_repository import (
     InterviewStageRepository,
     InterviewTemplateRepository,
 )
+from app.repositories.interviewer_repository import InterviewerTurnRepository
 from app.repositories.problem_repository import ProblemRepository
 from app.repositories.submission_repository import SubmissionRepository
 from app.repositories.testcase_repository import TestCaseRepository
@@ -160,6 +161,7 @@ class InterviewService:
         submission_repo: SubmissionRepository,
         workspace_service: WorkspaceService,
         settings: Settings,
+        interviewer_turn_repo: InterviewerTurnRepository | None = None,
     ) -> None:
         self._templates = template_repo
         self._stages = stage_repo
@@ -169,6 +171,7 @@ class InterviewService:
         self._submissions = submission_repo
         self._workspaces = workspace_service
         self._settings = settings
+        self._interviewer_turns = interviewer_turn_repo
 
     @property
     def _grace(self) -> timedelta:
@@ -410,12 +413,34 @@ class InterviewService:
         detail = await self._detail(session, template, stages, reveal_all=True)
         subs = await self._submissions.list_by_session(session.id)
         subs.sort(key=lambda s: (s.created_at, s.id))
+        turns = []
+        if self._interviewer_turns is not None:
+            from app.services.interviewer_service import InterviewerService
+
+            turns = [
+                InterviewerService.to_response(t)
+                for t in await self._interviewer_turns.list_by_session(session.id)
+            ]
         return SessionReview(
             **detail.model_dump(),
             submissions=[SubmissionService._to_response(s) for s in subs],
+            interviewer_turns=turns,
         )
 
     # ── hooks for other services ───────────────────────────────────
+
+    async def load_for_agent(
+        self, user: User, session_id: str
+    ) -> tuple[InterviewSession, InterviewTemplate, list[InterviewStage]]:
+        """InterviewerService: the session with the clock enforced (owner or
+        admin), its template and stages."""
+        return await self._load(user, session_id)
+
+    async def results_for(
+        self, session: InterviewSession, stages: list[InterviewStage]
+    ) -> dict[int, StageResult]:
+        """InterviewerService: per-stage derived results."""
+        return await self._results(session, stages)
 
     async def authorize_submission(
         self, user: User, session_id: str, problem_id: str, workspace_id: str | None

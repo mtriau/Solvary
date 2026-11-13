@@ -257,6 +257,113 @@ export interface InterviewSessionDetail extends InterviewSessionSummary {
 
 export interface InterviewSessionReview extends InterviewSessionDetail {
   submissions: Submission[];
+  /** Interviewer agent transcript, oldest first (empty when the agent was never used). */
+  interviewer_turns: InterviewerTurn[];
+}
+
+// ── Interviewer agent (SOLVARY_INTERVIEWER_DESIGN.md) ─────────────
+
+export type KeySource = 'user' | 'server' | 'none';
+
+export interface AiKeyStatus {
+  configured: boolean;
+  last4: string | null;
+  source: KeySource;
+}
+
+export interface AiKeyTestResult {
+  ok: boolean;
+  model: string;
+  source: KeySource;
+}
+
+export type InterviewerTrigger = 'speech' | 'typed' | 'event' | 'opening';
+export type MicMode = 'open' | 'push' | 'off';
+
+export interface InterviewerTurn {
+  id: string;
+  ordinal: number;
+  role: 'user' | 'assistant';
+  trigger: InterviewerTrigger | null;
+  /** utterance / "[event] …" lines, or the reply / "[silent]" / "[refused]" */
+  content: string;
+  digest: string;
+  silent: boolean;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_input_tokens: number | null;
+  cache_creation_input_tokens: number | null;
+  created_at: string;
+}
+
+export interface InterviewerTranscript {
+  turns: InterviewerTurn[];
+  /** fire the idle event after this many seconds without activity */
+  idle_s: number;
+  model: string;
+  key_source: KeySource;
+  active: boolean;
+}
+
+export interface JudgeFailure {
+  name: string;
+  detail: string;
+}
+
+export interface JudgeSnapshot {
+  submission_id: string | null;
+  verdict: string;
+  passed: number;
+  total: number;
+  failures: JudgeFailure[];
+  age_s: number;
+}
+
+export interface RunSnapshot {
+  status: string | null;
+  stdin: string;
+  stdout: string;
+  stderr: string;
+  age_s: number;
+}
+
+/** The client half of the context package: what is on the candidate's screen. */
+export interface ScreenContext {
+  stage: number;
+  code: string;
+  code_changed_since_last_turn: boolean;
+  judge: JudgeSnapshot | null;
+  run: RunSnapshot | null;
+  visible_pane: 'judge' | 'run' | 'none';
+  seconds_since_last_edit: number;
+  mic: MicMode;
+}
+
+export interface InterviewerTurnRequest {
+  trigger: InterviewerTrigger;
+  utterance?: string;
+  events?: string[];
+  screen: ScreenContext;
+}
+
+/** The terminal SSE frame of a turn. */
+export interface InterviewerDoneFrame {
+  done: true;
+  spoke: boolean;
+  refused?: boolean;
+  truncated?: boolean;
+  turn_id?: string;
+  user_turn_id?: string;
+  model?: string;
+  usage?: Partial<
+    Record<
+      'input_tokens' | 'output_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens',
+      number
+    >
+  >;
+  error?: boolean;
+  status?: number | null;
 }
 
 // ── Stats & accolades ─────────────────────────────────────────────

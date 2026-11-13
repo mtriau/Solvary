@@ -332,6 +332,44 @@ unchanged; sessions and test cases are untouched).
 `tests/test_sierra_content.py` checks every reference is green and every
 stub is red.
 
+## Interviewer agent
+
+An AI interviewer sits in a third, resizable pane of the interview page
+(design: [`../SOLVARY_INTERVIEWER_DESIGN.md`](../SOLVARY_INTERVIEWER_DESIGN.md)).
+It runs on the **user's own Anthropic API key** — pasted once in the
+*Interviewer* card on the interviews page, stored Fernet-encrypted
+(`app/core/secrets.py`, key derived from `SECRET_KEY`), never returned by any
+endpoint — or on `ANTHROPIC_API_KEY` as a server-wide fallback. Model and
+effort are config (`INTERVIEWER_MODEL=claude-sonnet-5-5`,
+`INTERVIEWER_EFFORT=low`); `INTERVIEWER_PROVIDER=fake` scripts replies for tests.
+
+Every **turn** is one streamed Claude request assembled server-side
+(`app/services/interviewer_service.py` + `interviewer_prompt.py`): a static
+persona, the whole template (every part's statement, provided tests,
+interviewer notes and — unless `INTERVIEWER_KNOWS_SOLUTIONS=false` — the
+reference solution, all marked never-reveal; this block carries the prompt-cache
+breakpoint), the stored transcript as history (earlier turns as a one-line
+digest, never old code), and the newest turn: the server's truth (clock, part,
+budget, results) plus the **screen** the page sends (the editor buffer, the
+latest judge result with failing test names and tracebacks, the latest Run
+output, which pane is open, seconds since the last edit, mic mode). Turns are
+triggered by speech, typing, or page events (session start, verdict, a Run
+crash, part change, budget exceeded, `INTERVIEWER_IDLE_S` of silence); the
+model answers `[silent]` when an interviewer would not speak, and the pane
+hides those. Transcripts persist in `interviewer_turns` (migration
+`b7e4d2c9a1f0`) and show on the review page.
+
+Microphone input is the browser's Web Speech API (Chrome/Edge): *Open* mic
+sends what you said once you pause for 1.2 s, *Push* sends on release
+(`Ctrl+Shift+Space`; `Ctrl+Shift+M` toggles the mic). An optional voice reads
+replies aloud and the mic is muted while it speaks, so the agent never hears
+itself. Ask AI stays disabled during a session.
+
+Endpoints: `GET|PUT|DELETE /users/me/ai-key`, `POST /users/me/ai-key/test`
+(5/min); `GET|POST|DELETE /v1/interviews/sessions/{id}/interviewer/turns`
+(POST streams SSE `{"content"}`* then `{"done", "spoke", …}`; 402 `NO_API_KEY`
+without a key, 409 when the session is over or a turn is in flight, 40/min).
+
 ## Home: stats and accolades
 
 `GET /v1/stats/me` powers the home page: totals (solved, submissions,

@@ -43,6 +43,8 @@ class SQLAlchemyUserRepository(UserRepository):
             avatar_url=entity.avatar_url,
             role=entity.role,
             google_sub=entity.google_sub,
+            anthropic_api_key_enc=entity.anthropic_api_key_enc,
+            anthropic_api_key_last4=entity.anthropic_api_key_last4,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -59,6 +61,8 @@ class SQLAlchemyUserRepository(UserRepository):
             row.avatar_url = entity.avatar_url
             row.role = entity.role
             row.google_sub = entity.google_sub
+            row.anthropic_api_key_enc = entity.anthropic_api_key_enc
+            row.anthropic_api_key_last4 = entity.anthropic_api_key_last4
             row.updated_at = datetime.now(UTC)
             await self._session.flush()
         return entity
@@ -78,6 +82,8 @@ class SQLAlchemyUserRepository(UserRepository):
             avatar_url=row.avatar_url,
             role=row.role,  # type: ignore[arg-type]
             google_sub=row.google_sub,
+            anthropic_api_key_enc=row.anthropic_api_key_enc,
+            anthropic_api_key_last4=row.anthropic_api_key_last4,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
