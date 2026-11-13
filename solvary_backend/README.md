@@ -315,7 +315,20 @@ Practice sets (all pytest mode, seeded private):
 .venv\Scripts\python -m scripts.seed_perplexity   # Perplexity coding-screen set: six multi-part levels + a tier-2 questions set
 .venv\Scripts\python -m scripts.seed_sierra       # Sierra phone-screen set (8 x 3 parts, 25–30 min)
 .venv\Scripts\python -m scripts.seed_sierra --refresh   # re-read content/sierra_prep: update statements, editorials, stubs in place
+.venv\Scripts\python -m scripts.seed_ai_prep      # AI-company set: 5 multi-part problems (2 CodeSignal-style 90-min 4-level, 3 live screens)
+.venv\Scripts\python -m scripts.seed_ai_prep --refresh
 ```
+
+The AI-company set (`content/ai_prep/`, report in
+[`../reports/AI company coding interview problems.md`](../reports/AI%20company%20coding%20interview%20problems.md))
+reconstructs the most-reported multi-part problems of Nov 2025 – Nov 2026:
+`memory_db` and `bank_system` are CodeSignal Industry Coding Assessment
+shapes (Anthropic, OpenAI, Coinbase, Meta, Airbnb: 90 min, four levels,
+level 3 is where time enters), `grid_infection` is OpenAI's five-part
+simulation, `recipe_cart` Decagon's discounts → versions → nested transactions
+screen, `rate_limiter` Snowflake's tiers → runtime updates → injected clock →
+compound rules and a shared store. `tests/test_ai_prep_content.py` checks
+every reference is green, every stub red, and every folder matches its `Spec`.
 
 Content lives in `content/perplexity_prep/<problem>/` and
 `content/sierra_prep/<problem>/` (`PARTn.md`, stub, `test_*_pn.py`,
