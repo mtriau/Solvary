@@ -2,6 +2,8 @@ import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
+  Bell,
+  BellOff,
   Hand,
   HelpCircle,
   KeyRound,
@@ -13,7 +15,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import type { MicMode } from '@/shared/types/api';
+import type { InterviewerAttention, MicMode } from '@/shared/types/api';
 import type { Interviewer } from '../hooks/useInterviewer';
 import type { SpeechInput } from '../hooks/useSpeechInput';
 import type { useSpeechOutput } from '../hooks/useSpeechOutput';
@@ -25,6 +27,8 @@ interface Props {
   tts: ReturnType<typeof useSpeechOutput>;
   /** The session still accepts turns. */
   active: boolean;
+  attention: InterviewerAttention;
+  onAttention: (mode: InterviewerAttention) => void;
   onSend: (text: string) => void;
   onNudge: () => void;
   onCollapse: () => void;
@@ -48,7 +52,17 @@ function fmtK(n: number): string {
  * The third column of the interview page (design §10): transcript, mic and
  * voice controls, composer. Hidden [silent] turns never render.
  */
-export function InterviewerPane({ interviewer, speech, tts, active, onSend, onNudge, onCollapse }: Props) {
+export function InterviewerPane({
+  interviewer,
+  speech,
+  tts,
+  active,
+  attention,
+  onAttention,
+  onSend,
+  onNudge,
+  onCollapse,
+}: Props) {
   const [draft, setDraft] = useState('');
   const keySource = interviewer.transcript?.key_source ?? 'none';
   const needsKey = interviewer.noKey || (!!interviewer.transcript && keySource === 'none');
@@ -91,6 +105,33 @@ export function InterviewerPane({ interviewer, speech, tts, active, onSend, onNu
           </span>
         )}
         <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => onAttention(attention === 'watch' ? 'request' : 'watch')}
+          aria-pressed={attention === 'watch'}
+          title={
+            attention === 'watch'
+              ? 'Watching: every submit, run and part change wakes the interviewer. Click for on-request.'
+              : `On request: the interviewer only speaks when you address it, when a part runs over budget, or when you go quiet.${
+                  interviewer.deferred > 0
+                    ? ` ${interviewer.deferred} event${interviewer.deferred === 1 ? '' : 's'} waiting for your next message.`
+                    : ''
+                } Click to watch everything.`
+          }
+          className={`relative inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-[10px] font-medium ${
+            attention === 'watch'
+              ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {attention === 'watch' ? <Bell size={11} /> : <BellOff size={11} />}
+          {attention === 'watch' ? 'Watching' : 'On request'}
+          {attention === 'request' && interviewer.deferred > 0 && (
+            <span className="ml-0.5 min-w-[14px] px-1 rounded-full bg-gray-200 text-gray-700 text-[9px] leading-[14px] text-center">
+              {interviewer.deferred}
+            </span>
+          )}
+        </button>
         <button
           onClick={onCollapse}
           className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
@@ -211,9 +252,11 @@ export function InterviewerPane({ interviewer, speech, tts, active, onSend, onNu
           </div>
         ) : interviewer.turns.length === 0 && !interviewer.pending && !interviewer.streaming ? (
           <p className="text-xs text-gray-400 text-center py-6 px-4">
-            {canTalk
-              ? 'Talk through your plan, or type below. The interviewer speaks when an interviewer would.'
-              : 'No interviewer transcript for this session.'}
+            {!canTalk
+              ? 'No interviewer transcript for this session.'
+              : attention === 'request'
+                ? 'Talk through your plan, or type below. On request: the interviewer stays quiet until you address it, a part runs over budget, or you go idle; what you submit or run meanwhile is remembered.'
+                : 'Talk through your plan, or type below. The interviewer speaks when an interviewer would.'}
           </p>
         ) : null}
         <TranscriptList

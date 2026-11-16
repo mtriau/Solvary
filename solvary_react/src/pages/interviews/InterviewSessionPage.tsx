@@ -38,11 +38,12 @@ import { ResizeHandle } from '@/shared/components/ResizeHandle';
 import { usePersistedNumber } from '@/shared/hooks/usePersistedNumber';
 import { ApiError } from '@/shared/lib/api-client';
 import { fetchFiles } from '@/shared/lib/api';
-import type { InterviewSessionDetail, MicMode } from '@/shared/types/api';
+import type { InterviewSessionDetail, InterviewerAttention, MicMode } from '@/shared/types/api';
 
 type Pane = 'judge' | 'run';
 
 const INTERVIEWER_OPEN_KEY = 'interview.interviewerOpen';
+const INTERVIEWER_ATTENTION_KEY = 'interview.interviewerAttention';
 const IDLE_CHECK_MS = 15_000;
 const IDLE_REPEAT_MS = 5 * 60_000;
 
@@ -99,6 +100,26 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
       /* private mode */
     }
   };
+  // When the agent wakes on its own (design §2.3): on request by default, so
+  // playing with Submit does not summon it; remembered across sessions
+  const [attention, setAttentionState] = useState<InterviewerAttention>(() => {
+    try {
+      return localStorage.getItem(INTERVIEWER_ATTENTION_KEY) === 'watch' ? 'watch' : 'request';
+    } catch {
+      return 'request';
+    }
+  });
+  const setAttention = (mode: InterviewerAttention) => {
+    setAttentionState(mode);
+    try {
+      localStorage.setItem(INTERVIEWER_ATTENTION_KEY, mode);
+    } catch {
+      /* private mode */
+    }
+  };
+  const watching = attention === 'watch';
+  const watchingRef = useRef(watching);
+  watchingRef.current = watching;
   // Draggable splitters (remembered across sessions)
   const [rightWidth, setRightWidth, resetRightWidth] = usePersistedNumber(
     'interview.interviewerWidth',
@@ -243,24 +264,33 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     setPaused(micPaused);
   }, [micPaused, setPaused]);
 
-  // Opening line, once, on a fresh session
+  // Opening line, once, on a fresh session (only when watching: on request the
+  // interviewer waits to be addressed)
   const transcriptLoaded = !!interviewer.transcript;
   const turnCount = interviewer.turns.length;
   const openingRef = useRef(false);
   useEffect(() => {
     if (!agentEnabled || !transcriptLoaded || openingRef.current) return;
     openingRef.current = true;
-    if (turnCount === 0) enqueue({ trigger: 'opening', events: [STARTED_EVENT] });
+    if (turnCount === 0 && watchingRef.current) enqueue({ trigger: 'opening', events: [STARTED_EVENT] });
   }, [agentEnabled, transcriptLoaded, turnCount, enqueue]);
+
+  // Screen events (verdict, run crash, part change) wake the agent only when
+  // watching; on request they are parked and ride along with the next turn
+  const screenEvent = useCallback(
+    (line: string) => {
+      if (!agentEnabledRef.current) return;
+      enqueue({ trigger: 'event', events: [line] }, { wake: watchingRef.current });
+    },
+    [enqueue],
+  );
 
   // A verdict changes the derived results → refresh the payload; tell the interviewer
   useEffect(() => {
     if (!verdict) return;
     queryClient.invalidateQueries({ queryKey: INTERVIEW_KEYS.session(session.id) });
-    if (agentEnabledRef.current) {
-      enqueue({ trigger: 'event', events: [verdictEvent(verdict, eventsRef.current, labelsRef.current)] });
-    }
-  }, [verdict, queryClient, session.id, enqueue]);
+    screenEvent(verdictEvent(verdict, eventsRef.current, labelsRef.current));
+  }, [verdict, queryClient, session.id, screenEvent]);
 
   // A Run that crashed or timed out
   const runEventRef = useRef<string | null>(null);
@@ -268,17 +298,17 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     if (runState.isRunning || !runState.runId || runEventRef.current === runState.runId) return;
     if ((runState.status && runState.status !== 'finished') || runState.error) {
       runEventRef.current = runState.runId;
-      if (agentEnabledRef.current) enqueue({ trigger: 'event', events: [runEvent(runState)] });
+      screenEvent(runEvent(runState));
     }
-  }, [runState, enqueue]);
+  }, [runState, screenEvent]);
 
   // Stage advanced or switched
   const prevStageRef = useRef(session.current_stage);
   useEffect(() => {
     if (prevStageRef.current === session.current_stage) return;
     prevStageRef.current = session.current_stage;
-    if (stage && agentEnabledRef.current) enqueue({ trigger: 'event', events: [stageEvent(stage)] });
-  }, [session.current_stage, stage, enqueue]);
+    if (stage) screenEvent(stageEvent(stage));
+  }, [session.current_stage, stage, screenEvent]);
 
   // ── pacing nudges ──
   const budget = stage?.budget_s ?? null;
@@ -291,7 +321,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
   const showNudge =
     active && overBudget && partsLeft > 0 && (pointOfNoReturn || dismissedNudge !== session.current_stage);
 
-  // Budget exceeded: once per stage
+  // Budget exceeded: once per stage (a time trigger: wakes the agent in both modes)
   const budgetFiredRef = useRef<number | null>(null);
   useEffect(() => {
     if (!overBudget || !stage || budgetFiredRef.current === session.current_stage) return;
@@ -301,7 +331,8 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     }
   }, [overBudget, stage, session.current_stage, stageElapsedS, enqueue]);
 
-  // Idle: no speech, typing or code change for idle_s (at most once per 5 min)
+  // Idle: no speech, typing or code change for idle_s (at most once per 5 min;
+  // a time trigger, wakes the agent in both modes)
   const idleS = interviewer.transcript?.idle_s ?? 180;
   useEffect(() => {
     if (!agentEnabled) return;
@@ -558,6 +589,8 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
                 speech={speech}
                 tts={tts}
                 active={active}
+                attention={attention}
+                onAttention={setAttention}
                 onSend={(text) => {
                   lastActivityRef.current = Date.now();
                   enqueue({ trigger: 'typed', utterance: text });

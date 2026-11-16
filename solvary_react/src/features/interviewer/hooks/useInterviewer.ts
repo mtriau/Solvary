@@ -16,6 +16,15 @@ export interface QueuedTurn {
   events?: string[];
 }
 
+export interface EnqueueOptions {
+  /**
+   * `false` parks the item in the queue without sending anything: it is folded
+   * into the next turn that does wake the agent (speech, typing, a time-based
+   * event). Used by the "on request" attention mode for submit/run/stage events.
+   */
+  wake?: boolean;
+}
+
 export interface TurnUsage {
   input: number;
   output: number;
@@ -125,6 +134,8 @@ export function useInterviewer({ sessionId, enabled, buildScreen, onReply }: Opt
   const [noKey, setNoKey] = useState(false);
   const [usage, setUsage] = useState<TurnUsage>({ input: 0, output: 0, cached: 0 });
   const [lastUserTurnAt, setLastUserTurnAt] = useState<number | null>(null);
+  /** Event lines parked by `enqueue(…, { wake: false })`, not yet sent. */
+  const [deferred, setDeferred] = useState(0);
 
   const queueRef = useRef<QueuedTurn[]>([]);
   const busyRef = useRef(false);
@@ -209,6 +220,7 @@ export function useInterviewer({ sessionId, enabled, buildScreen, onReply }: Opt
       for (;;) {
         const item = takeNext(queueRef.current);
         if (!item) break;
+        setDeferred(0);
         if (!enabledRef.current) {
           queueRef.current = [];
           break;
@@ -221,10 +233,17 @@ export function useInterviewer({ sessionId, enabled, buildScreen, onReply }: Opt
   }, [runTurn]);
 
   const enqueue = useCallback(
-    (item: QueuedTurn) => {
+    (item: QueuedTurn, { wake = true }: EnqueueOptions = {}) => {
       if (!enabledRef.current || noKey) return;
       if (item.trigger === 'speech' || item.trigger === 'typed') setLastUserTurnAt(Date.now());
       queueRef.current.push(item);
+      if (!wake) {
+        // Parked: counted for the pane badge, sent with the next waking turn
+        setDeferred(
+          new Set(queueRef.current.flatMap((q) => (q.trigger === 'event' ? q.events ?? [] : []))).size,
+        );
+        return;
+      }
       void pump();
     },
     [noKey, pump],
@@ -243,6 +262,7 @@ export function useInterviewer({ sessionId, enabled, buildScreen, onReply }: Opt
     noKey,
     usage,
     lastUserTurnAt,
+    deferred,
     enqueue,
   };
 }

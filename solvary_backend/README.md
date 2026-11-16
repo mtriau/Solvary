@@ -367,9 +367,12 @@ budget, results) plus the **screen** the page sends (the editor buffer, the
 latest judge result with failing test names and tracebacks, the latest Run
 output, which pane is open, seconds since the last edit, mic mode). Turns are
 triggered by speech, typing, or page events (session start, verdict, a Run
-crash, part change, budget exceeded, `INTERVIEWER_IDLE_S` of silence); the
-model answers `[silent]` when an interviewer would not speak, and the pane
-hides those. Transcripts persist in `interviewer_turns` (migration
+crash, part change, budget exceeded, `INTERVIEWER_IDLE_S` of silence). By
+default the pane is **on request**: only your own messages and the time-based
+events (budget exceeded, idle) start a turn, while verdicts, Run crashes and
+part changes are parked and delivered with your next message; the *Watching*
+switch in the pane header makes every event a turn. The model answers
+`[silent]` when an interviewer would not speak, and the pane hides those. Transcripts persist in `interviewer_turns` (migration
 `b7e4d2c9a1f0`) and show on the review page.
 
 Microphone input is the browser's Web Speech API (Chrome/Edge): *Open* mic

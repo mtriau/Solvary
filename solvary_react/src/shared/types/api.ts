@@ -278,6 +278,13 @@ export interface AiKeyTestResult {
 }
 
 export type InterviewerTrigger = 'speech' | 'typed' | 'event' | 'opening';
+/**
+ * When the page wakes the interviewer on its own. `request`: only when addressed
+ * (mic, composer, check-in) or on time (budget exceeded, idle); submits, runs and
+ * part changes are remembered and folded into that next turn. `watch`: every event
+ * is a turn (the original behaviour).
+ */
+export type InterviewerAttention = 'request' | 'watch';
 export type MicMode = 'open' | 'push' | 'off';
 
 export interface InterviewerTurn {

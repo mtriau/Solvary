@@ -32,6 +32,12 @@ that differ from the draft:
   `httpx` 0.28 that Piston uses — verified in the venv.
 - No frontend unit tests were added: the React app has no test runner today (§12
   lists them as the next hygiene step).
+- **Attention mode** (2026-11-16, §2.3): the page no longer wakes the agent on every
+  submit. A per-browser switch in the pane header (`localStorage`
+  `interview.interviewerAttention`) picks **on request** (default) or **watching**;
+  on request, screen events are parked in the client queue (`enqueue(…, { wake:
+  false })`) and ride along with the next waking turn. Only time-based events and
+  the candidate's own messages wake it.
 
 ## 0. What we are building
 
@@ -142,6 +148,25 @@ Events are queued behind any in-flight turn and merged: if two events fire while
 turn streams, one `event` turn is sent listing both. Speech always takes priority
 over queued events (its utterance is sent as the next turn and the pending events are
 folded into the same context package under "since your last reply").
+
+**Attention mode** (pane header, remembered per browser). Which of those events
+*wake* the agent on their own:
+
+| Event | On request (default) | Watching |
+|---|---|---|
+| Session starts | no opening line | opening turn |
+| Verdict, Run crash, part change | parked | turn |
+| Budget exceeded, idle | turn | turn |
+| Speech, typed message, check-in button | turn | turn |
+
+*Parked* events stay in the client queue (the header badge counts them) and are
+folded into the next waking turn exactly like events queued behind a streaming
+reply, so the interviewer still knows what you submitted and ran when you do speak
+to it; the last 8 distinct lines are kept. The default is on request because
+Submit doubles as the candidate's test runner: most submissions are exploration,
+not milestones, and an interviewer that comments on each one is both expensive and
+irritating. Time-based events are the pacing signals an interviewer would act on
+unprompted, so they wake it in both modes.
 
 ### 2.4 Concurrency
 
@@ -368,7 +393,9 @@ Migration `b7e4d2c9a1f0_interviewer_agent.py` (revises `9d2f4b7c1e55`): batch-mo
   streams `POST …/interviewer/turns`, appends the growing reply to local state,
   then invalidates the transcript query. Queued `event` items merge into a single
   turn; a queued `speech`/`typed` item absorbs pending events into its `events`.
-- Exposes `{ turns, streaming, partial, enqueue, speak, error }`.
+- Exposes `{ turns, streaming, partial, enqueue, speak, error }`. `enqueue(item, {
+  wake: false })` parks the item without pumping (attention mode, §2.3); `deferred`
+  counts the parked event lines for the header badge and resets when a turn is sent.
 
 `features/interviewer/lib/screen-context.ts`: pure function
 `buildScreenContext({ collab, fileId, stage, judgeEvents, verdict, runState, pane, lastEditAt, mic, lastCode })`
@@ -581,3 +608,8 @@ the choice.
 10. **Opening line.** Yes: an `opening` turn fires once on a fresh session with a
     configured key; the model may still answer `[silent]`.
 11. **Ask AI.** Still disabled during the session; unchanged on the review page.
+12. **When it wakes on its own** (added 2026-11-16). *On request* by default: the
+    candidate's messages and the time-based events (budget exceeded, idle) start a
+    turn; verdicts, Run crashes and part changes are parked and delivered with the
+    next turn. *Watching* in the pane header restores a turn per event (and the
+    opening line). Per browser, `localStorage` `interview.interviewerAttention`.
