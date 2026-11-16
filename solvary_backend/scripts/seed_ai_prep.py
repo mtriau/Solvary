@@ -7,7 +7,7 @@ Usage:
 
 Source: content/ai_prep/ — multi-part problems reconstructed from candidate
 reports (Nov 2025 – Nov 2026) at Anthropic, OpenAI, Coinbase, Meta, Airbnb,
-Decagon, Snowflake and xAI; see reports/AI company coding interview problems.md
+Decagon, Snowflake, xAI, Reddit and Netflix; see reports/AI company coding interview problems.md
 at the monorepo root for the sources and confidence per problem. Two shapes:
 
 - CodeSignal Industry Coding Assessment (ICA) style: 90 minutes, four levels
@@ -156,6 +156,101 @@ SPECS: list[tuple[Spec, str]] = [
         SCREEN_RULES
         + " Snowflake's 60-min phone screen (first-hand Aug 2026: rejected for running out of"
         " time before the last follow-up); xAI escalates the same way.",
+    ),
+    (
+        Spec(
+            "tennis_scoring",
+            "Tennis Scoring",
+            "medium",
+            ["design", "state-machine"],
+            60,
+            [
+                ("Game: points, deuce, advantage", 15),
+                ("Set: games and the tiebreak", 20),
+                ("Match and a point-string harness", 25),
+            ],
+            "Three small classes that compose (Match owns Sets own Games); one record_point"
+            " entry point delegating downward; terminal states reject further points",
+        ),
+        SCREEN_RULES
+        + " Reddit's most-asked screen (high frequency, last reported Oct 2026; a first-hand"
+        " candidate ran out of time on part 3). Build Game completely before Set.",
+    ),
+    (
+        Spec(
+            "csat_tracker",
+            "Rolling CSAT Tracker",
+            "easy",
+            ["sliding-window", "deque", "counting"],
+            30,
+            [
+                ("record and get_average", 12),
+                ("update within the window", 8),
+                ("Percentiles", 10),
+            ],
+            "Deque of (timestamp, id) for expiry + per-conversation score map + a 5-bucket"
+            " score histogram for O(1) average and percentile",
+        ),
+        SCREEN_RULES
+        + " Decagon's most-reported phone-screen problem (first-hand Apr 2026, passed; 10"
+        " public reports to Nov 2026), usually the warm-up before a harder second problem.",
+    ),
+    (
+        Spec(
+            "homepage_dedup",
+            "Homepage Row Deduplication",
+            "medium",
+            ["hashset", "simulation"],
+            45,
+            [
+                ("Global uniqueness for the first n", 15),
+                ("Per-row limits", 15),
+                ("Exempt rows", 15),
+            ],
+            "One pass per row with a row-local set and a shared global set; the limit counts"
+            " retained titles, not input positions",
+        ),
+        SCREEN_RULES
+        + " Netflix's 'problem-solving' phone screen (4 reports, first-hand Jul 2026; open-book,"
+        " ~15 minutes of clarification expected before coding).",
+    ),
+    (
+        Spec(
+            "comment_filter",
+            "Comment Tree Filter",
+            "medium",
+            ["tree", "dfs", "post-order"],
+            45,
+            [
+                ("Exclude a category and its subtrees", 15),
+                ("Score-based retention", 20),
+                ("Visible thread order", 10),
+            ],
+            "Build children lists from parent links (any input order); one post-order pass"
+            " for subtree sums; a top-down pass carrying the nearest hidden decision",
+        ),
+        SCREEN_RULES
+        + " Reddit phone screen and onsite (3 reports Q3–Q4 2026; two candidates did not"
+        " finish part 2 and one still passed).",
+    ),
+    (
+        Spec(
+            "ttl_cache",
+            "TTL Cache",
+            "medium",
+            ["design", "heap", "lru"],
+            60,
+            [
+                ("put, get, delete with exact expiry", 15),
+                ("Cleanup without scanning", 20),
+                ("Capacity and LRU", 25),
+            ],
+            "Dict of entries with a version stamp + a min-heap of (expires_at, version, key)"
+            " for lazy cleanup that skips stale records; OrderedDict recency for the cap",
+        ),
+        SCREEN_RULES
+        + " Netflix IC5 phone screen (first-hand Oct 2026, rejected for code that was 'not"
+        " concise enough'); Snap, Databricks and xAI ask the LRU + TTL combination.",
     ),
 ]
 
