@@ -239,6 +239,7 @@ class SQLAlchemyInterviewSessionRepository(InterviewSessionRepository):
                 unlocked_through=entity.unlocked_through,
                 stage_files=dict(entity.stage_files),
                 timeline=list(entity.timeline),
+                pauses=list(entity.pauses),
                 created_at=entity.created_at,
                 updated_at=entity.updated_at,
             )
@@ -255,6 +256,7 @@ class SQLAlchemyInterviewSessionRepository(InterviewSessionRepository):
             row.unlocked_through = entity.unlocked_through
             row.stage_files = dict(entity.stage_files)
             row.timeline = list(entity.timeline)  # new list → JSON change detected
+            row.pauses = list(entity.pauses)
             row.workspace_id = entity.workspace_id
             row.updated_at = datetime.now(UTC)
             await self._session.flush()
@@ -289,6 +291,7 @@ class SQLAlchemyInterviewSessionRepository(InterviewSessionRepository):
             unlocked_through=row.unlocked_through,
             stage_files=dict(row.stage_files or {}),
             timeline=list(row.timeline or []),
+            pauses=list(row.pauses or []),
             created_at=cls._aware(row.created_at),  # type: ignore[arg-type]
             updated_at=cls._aware(row.updated_at),  # type: ignore[arg-type]
         )

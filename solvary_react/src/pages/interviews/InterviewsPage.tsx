@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Loader2, Play, Timer } from 'lucide-react';
+import { Loader2, Pause, Play, Timer } from 'lucide-react';
 import {
   useInterviewSessions,
   useInterviewTemplates,
@@ -77,16 +77,22 @@ function DurationPicker({
 }
 
 function ActiveBanner({ active }: { active: InterviewSessionSummary }) {
-  const countdown = useCountdown(active.ends_at, active.server_time);
+  const countdown = useCountdown(active.ends_at, active.server_time, undefined, active.paused_at);
   return (
     <Link
       to={`/interviews/sessions/${active.id}`}
       className="flex items-center gap-3 px-4 py-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
     >
-      <Timer size={18} className="text-indigo-600" />
+      {countdown.paused ? (
+        <Pause size={18} className="text-indigo-600" />
+      ) : (
+        <Timer size={18} className="text-indigo-600" />
+      )}
       <div className="flex-1 text-sm">
         <span className="font-semibold text-indigo-900">{active.template.title}</span>
-        <span className="text-indigo-700"> is in progress — the clock is running.</span>
+        <span className="text-indigo-700">
+          {countdown.paused ? ' is paused — the clock is stopped.' : ' is in progress — the clock is running.'}
+        </span>
       </div>
       <span className="font-mono text-lg font-semibold text-indigo-900 tabular-nums">
         {fmtClock(countdown.remainingS)}

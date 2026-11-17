@@ -325,7 +325,7 @@ class StatsService:
             ):
                 clock_beater = True
             if session.unlocked_through >= len(stages) and all(budgets.values()):
-                spent = stage_times(session.timeline, session_end(session, now))
+                spent = stage_times(session.timeline, session_end(session, now), session.pauses)
                 if all(
                     spent.get(st.ordinal, 0.0) <= 1.1 * (budgets[st.ordinal] or 0) for st in stages
                 ):

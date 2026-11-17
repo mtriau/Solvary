@@ -48,8 +48,11 @@ class SessionSummary(BaseModel):
     ends_at: datetime
     finished_at: datetime | None
     server_time: datetime
+    paused_at: datetime | None  # start of the pause in progress; None while the clock runs
+    paused_s: int  # total time the clock has stood still (the pause in progress included)
+    pause_count: int
     score: Score
-    time_used_s: int
+    time_used_s: int  # running time only: pauses are excluded
     stages_reached: int
     stage_count: int
     diagnosis: str | None  # pacing one-liner, None while active
@@ -122,12 +125,18 @@ class TimelineEntry(BaseModel):
     at: datetime
 
 
+class PauseEntry(BaseModel):
+    start: datetime
+    end: datetime | None  # None: still paused
+
+
 class SessionDetail(SessionSummary):
     workspace_id: str | None
     current_stage: int
     unlocked_through: int
     stages: list[StageView]
     timeline: list[TimelineEntry]
+    pauses: list[PauseEntry]
 
 
 class SessionReview(SessionDetail):

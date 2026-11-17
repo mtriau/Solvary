@@ -3,7 +3,11 @@ Mock interviews (SOLVARY_INTERVIEWS_DESIGN.md).
 
 Server-authoritative clock: every response carries started_at / ends_at /
 server_time; expiry is LAZY (any touch past ends_at + grace finalizes the
-session). Results are DERIVED from the submissions tagged with the session
+session). The clock can be PAUSED: `session.pauses` holds the intervals it
+stood still, `ends_at` as stored is the nominal deadline (start + duration)
+and every wall-clock computation — the deadline served to clients, time per
+stage, strict stage deadlines, time used — subtracts the paused intervals.
+Results are DERIVED from the submissions tagged with the session
 id — the worker knows nothing about interviews. Code lives in a workspace
 of kind "interview" (one file per stage in `questions`, one shared file in
 `levels`), so a reload mid-interview loses nothing.
@@ -37,6 +41,7 @@ from app.repositories.submission_repository import SubmissionRepository
 from app.repositories.testcase_repository import TestCaseRepository
 from app.schemas.common import PaginatedResponse
 from app.schemas.interviews import (
+    PauseEntry,
     Score,
     SessionDetail,
     SessionReview,
@@ -82,14 +87,60 @@ def _parse(s: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def stage_times(timeline: list[dict], end: datetime) -> dict[int, float]:
-    """Seconds spent per stage: each timeline entry is current until the
-    next entry (or `end`)."""
+def paused_overlap_s(pauses: list[dict], start: datetime, end: datetime) -> float:
+    """Seconds of [start, end] during which the clock stood still. A pause in
+    progress (no "end") runs through `end`."""
+    total = 0.0
+    for p in pauses:
+        lo = max(start, _parse(p["start"]))
+        hi = min(end, _parse(p["end"])) if p.get("end") else end
+        if hi > lo:
+            total += (hi - lo).total_seconds()
+    return total
+
+
+def pause_started_at(session: InterviewSession) -> datetime | None:
+    """Start of the pause in progress, None while the clock runs."""
+    if session.pauses and not session.pauses[-1].get("end"):
+        return _parse(session.pauses[-1]["start"])
+    return None
+
+
+def effective_ends_at(session: InterviewSession, now: datetime) -> datetime:
+    """The wall-clock deadline: the nominal `ends_at` pushed back by every
+    pause so far. A pause in progress keeps pushing it, so the remaining
+    time stands still."""
+    paused = paused_overlap_s(session.pauses, session.started_at, now)
+    return session.ends_at + timedelta(seconds=paused)
+
+
+def wall_time_after(
+    start: datetime, running_s: float, pauses: list[dict], now: datetime
+) -> datetime:
+    """The wall-clock moment at which a clock started at `start`, stopped
+    during `pauses`, has run for `running_s`. A pause in progress runs
+    through `now` (so the moment lies in the future while paused)."""
+    t = start + timedelta(seconds=running_s)
+    for p in sorted(pauses, key=lambda p: p["start"]):
+        p_start = _parse(p["start"])
+        if p_start >= t:
+            break
+        p_end = _parse(p["end"]) if p.get("end") else now
+        t += max(timedelta(0), p_end - p_start)
+    return t
+
+
+def stage_times(timeline: list[dict], end: datetime, pauses: list[dict] = ()) -> dict[int, float]:
+    """Running seconds spent per stage: each timeline entry is current until
+    the next entry (or `end`); paused intervals do not count."""
     entries = sorted(((_parse(e["at"]), int(e["stage"])) for e in timeline), key=lambda e: e[0])
     spent: dict[int, float] = defaultdict(float)
     for i, (at, stage) in enumerate(entries):
         stop = entries[i + 1][0] if i + 1 < len(entries) else end
-        spent[stage] += max(0.0, (stop - at).total_seconds())
+        if stop > at:
+            spent[stage] += (stop - at).total_seconds() - paused_overlap_s(list(pauses), at, stop)
+        else:
+            spent[stage] += 0.0
     return dict(spent)
 
 
@@ -125,9 +176,12 @@ def stage_deadlines(
     stages: list[InterviewStage],
     started_at: datetime,
     budgets: dict[int, int | None] | None = None,
+    pauses: list[dict] = (),
+    now: datetime | None = None,
 ) -> dict[int, datetime | None]:
-    """Strict pacing: stage N's hard deadline = start + Σ budgets 1..N.
-    None once a stage without a budget is hit (and for coached templates)."""
+    """Strict pacing: stage N's hard deadline = the wall-clock moment the
+    running clock reaches Σ budgets 1..N (pauses push it back). None once a
+    stage without a budget is hit (and for coached templates)."""
     out: dict[int, datetime | None] = {}
     if template.pacing != "strict":
         return {s.ordinal: None for s in stages}
@@ -140,14 +194,20 @@ def stage_deadlines(
             out[s.ordinal] = None
         else:
             acc += budget
-            out[s.ordinal] = started_at + timedelta(seconds=acc)
+            out[s.ordinal] = wall_time_after(started_at, acc, list(pauses), now or utcnow())
     return out
 
 
 def session_end(session: InterviewSession, now: datetime) -> datetime:
     if session.finished_at is not None:
         return session.finished_at
-    return min(now, session.ends_at)
+    return min(now, effective_ends_at(session, now))
+
+
+def running_s(session: InterviewSession, end: datetime) -> int:
+    """Running seconds from the start to `end`: pauses excluded."""
+    total = (end - session.started_at).total_seconds()
+    return int(max(0.0, total - paused_overlap_s(session.pauses, session.started_at, end)))
 
 
 class InterviewService:
@@ -359,7 +419,7 @@ class InterviewService:
 
     async def advance(self, user: User, session_id: str) -> SessionDetail:
         session, template, stages = await self._load(user, session_id)
-        self._require_active(session)
+        self._require_running(session)
         if template.format != "levels":
             raise ConflictException(
                 "This interview has no parts to unlock; switch between questions instead"
@@ -379,7 +439,7 @@ class InterviewService:
 
     async def switch(self, user: User, session_id: str, stage: int) -> SessionDetail:
         session, template, stages = await self._load(user, session_id)
-        self._require_active(session)
+        self._require_running(session)
         if template.format != "questions":
             raise ConflictException("Level-based interviews only move forward; use advance")
         if not 1 <= stage <= len(stages):
@@ -390,6 +450,29 @@ class InterviewService:
             session.current_stage = stage
             session.timeline = [*session.timeline, {"stage": stage, "at": _iso(utcnow())}]
             await self._sessions.update(session)
+        return await self._detail(session, template, stages)
+
+    async def pause(self, user: User, session_id: str) -> SessionDetail:
+        """Stop the clock. The statement, editor and interviewer are covered
+        client-side; the server refuses submit / advance / switch meanwhile."""
+        session, template, stages = await self._load(user, session_id)
+        self._require_active(session)
+        now = utcnow()
+        if pause_started_at(session) is not None:
+            raise ConflictException("The clock is already paused")
+        if now >= effective_ends_at(session, now):
+            raise ConflictException("Interview time is up")
+        session.pauses = [*session.pauses, {"start": _iso(now)}]
+        await self._sessions.update(session)
+        return await self._detail(session, template, stages)
+
+    async def resume(self, user: User, session_id: str) -> SessionDetail:
+        session, template, stages = await self._load(user, session_id)
+        self._require_active(session)
+        if pause_started_at(session) is None:
+            raise ConflictException("The clock is not paused")
+        self._close_pause(session, utcnow())
+        await self._sessions.update(session)
         return await self._detail(session, template, stages)
 
     async def finish(self, user: User, session_id: str) -> SessionDetail:
@@ -454,8 +537,10 @@ class InterviewService:
             raise ConflictException("Interview time is up")
         if session.status != "active":
             raise ConflictException("The interview is over")
+        if pause_started_at(session) is not None:
+            raise ConflictException("The clock is paused — resume it to submit")
         now = utcnow()
-        if now > session.ends_at + self._grace:
+        if now > effective_ends_at(session, now) + self._grace:
             raise ConflictException("Interview time is up")
         stage = next((s for s in stages if s.problem_id == problem_id), None)
         if stage is None:
@@ -465,7 +550,9 @@ class InterviewService:
         if template.format == "levels" and stage.ordinal != session.current_stage:
             raise ConflictException("Submissions target the current part")
         budgets = scaled_budgets(template, stages, session)
-        deadline = stage_deadlines(template, stages, session.started_at, budgets)[stage.ordinal]
+        deadline = stage_deadlines(
+            template, stages, session.started_at, budgets, session.pauses, now
+        )[stage.ordinal]
         if template.format == "questions" and deadline and now > deadline + self._grace:
             raise ConflictException("Time for this part is up")
         if workspace_id and workspace_id != session.workspace_id:
@@ -521,15 +608,18 @@ class InterviewService:
         changed = False
         if template.pacing == "strict" and template.format == "levels":
             budgets = scaled_budgets(template, stages, session)
-            deadlines = stage_deadlines(template, stages, session.started_at, budgets)
+            deadlines = stage_deadlines(
+                template, stages, session.started_at, budgets, session.pauses, now
+            )
             while session.unlocked_through < len(stages):
                 due = deadlines.get(session.current_stage)
                 if due is None or now <= due:
                     break
                 self._do_advance(session, due)
                 changed = True
-        if now > session.ends_at + self._grace:
-            self._finalize(session, "expired", session.ends_at)
+        end = effective_ends_at(session, now)
+        if now > end + self._grace:
+            self._finalize(session, "expired", end)
             changed = True
         if changed:
             await self._sessions.update(session)
@@ -541,7 +631,13 @@ class InterviewService:
         session.timeline = [*session.timeline, {"stage": session.current_stage, "at": _iso(at)}]
 
     @staticmethod
-    def _finalize(session: InterviewSession, status: str, at: datetime) -> None:
+    def _close_pause(session: InterviewSession, at: datetime) -> None:
+        if session.pauses and not session.pauses[-1].get("end"):
+            session.pauses = [*session.pauses[:-1], {**session.pauses[-1], "end": _iso(at)}]
+
+    @classmethod
+    def _finalize(cls, session: InterviewSession, status: str, at: datetime) -> None:
+        cls._close_pause(session, at)  # finishing while paused: the pause ends now
         session.status = status  # type: ignore[assignment]
         session.finished_at = at
 
@@ -552,6 +648,12 @@ class InterviewService:
         if session.status != "active":
             raise ConflictException("The interview is over")
 
+    @classmethod
+    def _require_running(cls, session: InterviewSession) -> None:
+        cls._require_active(session)
+        if pause_started_at(session) is not None:
+            raise ConflictException("The clock is paused — resume it first")
+
     async def _results(
         self, session: InterviewSession, stages: list[InterviewStage]
     ) -> dict[int, StageResult]:
@@ -560,7 +662,7 @@ class InterviewService:
         for s in subs:
             by_problem[s.problem_id].append(s)
         best = best_per_problem(subs)
-        spent = stage_times(session.timeline, session_end(session, utcnow()))
+        spent = stage_times(session.timeline, session_end(session, utcnow()), session.pauses)
 
         out: dict[int, StageResult] = {}
         for stage in stages:
@@ -630,11 +732,14 @@ class InterviewService:
             language=session.language,
             duration_s=session_duration_s(session),
             started_at=session.started_at,
-            ends_at=session.ends_at,
+            ends_at=effective_ends_at(session, now),
             finished_at=session.finished_at,
             server_time=now,
+            paused_at=pause_started_at(session),
+            paused_s=int(paused_overlap_s(session.pauses, session.started_at, now)),
+            pause_count=len(session.pauses),
             score=self._score(results),
-            time_used_s=int(max(0.0, (end - session.started_at).total_seconds())),
+            time_used_s=running_s(session, end),
             stages_reached=session.unlocked_through,
             stage_count=len(stages),
             diagnosis=(
@@ -654,7 +759,9 @@ class InterviewService:
         summary = await self._summary(session, template, stages)
         results = await self._results(session, stages)
         budgets = scaled_budgets(template, stages, session)
-        deadlines = stage_deadlines(template, stages, session.started_at, budgets)
+        deadlines = stage_deadlines(
+            template, stages, session.started_at, budgets, session.pauses, utcnow()
+        )
         views = []
         for stage in stages:
             unlocked = reveal_all or stage.ordinal <= session.unlocked_through
@@ -695,5 +802,9 @@ class InterviewService:
             stages=views,
             timeline=[
                 TimelineEntry(stage=e["stage"], at=_parse(e["at"])) for e in session.timeline
+            ],
+            pauses=[
+                PauseEntry(start=_parse(p["start"]), end=_parse(p["end"]) if p.get("end") else None)
+                for p in session.pauses
             ],
         )

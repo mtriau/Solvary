@@ -222,6 +222,14 @@ export async function switchInterviewStage(
   return apiClient.post(`/v1/interviews/sessions/${id}/switch`, { stage });
 }
 
+export async function pauseInterview(id: string): Promise<InterviewSessionDetail> {
+  return apiClient.post(`/v1/interviews/sessions/${id}/pause`);
+}
+
+export async function resumeInterview(id: string): Promise<InterviewSessionDetail> {
+  return apiClient.post(`/v1/interviews/sessions/${id}/resume`);
+}
+
 export async function finishInterview(id: string): Promise<InterviewSessionDetail> {
   return apiClient.post(`/v1/interviews/sessions/${id}/finish`);
 }

@@ -61,5 +61,8 @@ class InterviewSession:
     stage_files: dict[str, str] = field(default_factory=dict)
     # [{"stage": int, "at": iso8601}] — appended on start / advance / switch
     timeline: list[dict] = field(default_factory=list)
+    # [{"start": iso8601, "end": iso8601 | missing}] — the clock stood still in
+    # these intervals; a last entry without "end" is the pause in progress
+    pauses: list[dict] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

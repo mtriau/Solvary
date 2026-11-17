@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Loader2, Play, Send, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Loader2, Pause, Play, Send, X } from 'lucide-react';
 import type * as Y from 'yjs';
 import { useAuth } from '@/app/providers/AuthProvider';
 import CollabEditor from '@/features/collaboration/CollabEditor';
@@ -33,6 +33,7 @@ import {
   INTERVIEW_KEYS,
   useInterviewSession,
 } from '@/features/interviews/hooks/useInterviewSession';
+import { runningMsBetween } from '@/features/interviews/lib/clock';
 import { fmtClock } from '@/features/interviews/lib/format';
 import { ResizeHandle } from '@/shared/components/ResizeHandle';
 import { usePersistedNumber } from '@/shared/hooks/usePersistedNumber';
@@ -63,10 +64,17 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { advance, switchStage, finish, abandon, refetch } = useInterviewSession(session.id);
-  const countdown = useCountdown(session.ends_at, session.server_time, () => {
-    void refetch(); // the server finalizes lazily; the refetch flips status → review
-  });
+  const { advance, switchStage, pause, resume, finish, abandon, refetch } = useInterviewSession(
+    session.id,
+  );
+  const countdown = useCountdown(
+    session.ends_at,
+    session.server_time,
+    () => {
+      void refetch(); // the server finalizes lazily; the refetch flips status → review
+    },
+    session.paused_at,
+  );
 
   const { collab, synced, connected } = useCollab(
     session.workspace_id ?? '',
@@ -142,17 +150,22 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
 
   const isLevels = session.template.format === 'levels';
   const active = session.status === 'active';
+  // Paused: the clock stands still, the workbench is covered, Run / Submit are off
+  const paused = active && session.paused_at != null;
+  const running = active && !paused;
   const stage = session.stages.find((s) => s.ordinal === session.current_stage);
   const fileId = stage?.file_id ?? null;
   const labels = useMemo(() => testLabels(stage?.problem), [stage?.problem]);
   const filePath = files.find((f) => f.id === fileId)?.path ?? (isLevels ? 'main' : `q${session.current_stage}`);
 
-  // Stage elapsed from the server timeline, on the server-corrected clock
+  // Stage elapsed from the server timeline, on the server-corrected clock,
+  // pauses excluded
   const stageElapsedS = useMemo(() => {
     const last = session.timeline[session.timeline.length - 1];
     if (!last) return 0;
-    return Math.max(0, Math.floor((countdown.nowMs - new Date(last.at).getTime()) / 1000));
-  }, [session.timeline, countdown.nowMs]);
+    const ms = runningMsBetween(session.pauses, new Date(last.at).getTime(), countdown.nowMs);
+    return Math.floor(ms / 1000);
+  }, [session.timeline, session.pauses, countdown.nowMs]);
 
   useEffect(() => {
     if (stage?.problem) setStdin(stage.problem.sample_testcases[0]?.stdin ?? '');
@@ -257,8 +270,8 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
   streamingRef.current = interviewer.streaming;
 
   // The mic never hears the interviewer: paused while the voice plays, and
-  // while a reply streams if the voice is on
-  const micPaused = tts.speaking || (interviewer.streaming && tts.enabled);
+  // while a reply streams if the voice is on — and while the clock is stopped
+  const micPaused = tts.speaking || (interviewer.streaming && tts.enabled) || paused;
   const { setPaused } = speech;
   useEffect(() => {
     setPaused(micPaused);
@@ -331,11 +344,16 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
     }
   }, [overBudget, stage, session.current_stage, stageElapsedS, enqueue]);
 
+  // Coming back from a pause is not idling
+  useEffect(() => {
+    if (!paused) lastActivityRef.current = Date.now();
+  }, [paused]);
+
   // Idle: no speech, typing or code change for idle_s (at most once per 5 min;
-  // a time trigger, wakes the agent in both modes)
+  // a time trigger, wakes the agent in both modes; off while the clock is stopped)
   const idleS = interviewer.transcript?.idle_s ?? 180;
   useEffect(() => {
-    if (!agentEnabled) return;
+    if (!agentEnabled || paused) return;
     let lastIdleEvent = 0;
     const id = window.setInterval(() => {
       const now = Date.now();
@@ -350,7 +368,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
       }
     }, IDLE_CHECK_MS);
     return () => window.clearInterval(id);
-  }, [agentEnabled, idleS, enqueue]);
+  }, [agentEnabled, paused, idleS, enqueue]);
 
   // Keyboard: Ctrl+Shift+M toggles the mic, Ctrl+Shift+Space is push-to-talk.
   // Skipped when the editor already handled the chord (defaultPrevented).
@@ -409,7 +427,13 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
       void refetch();
     }
   };
-  const busy = advance.isPending || switchStage.isPending || finish.isPending || abandon.isPending;
+  const busy =
+    advance.isPending ||
+    switchStage.isPending ||
+    pause.isPending ||
+    resume.isPending ||
+    finish.isPending ||
+    abandon.isPending;
 
   return (
     <div className="h-full flex flex-col">
@@ -420,6 +444,8 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
         busy={busy}
         interviewerOpen={interviewerOpen}
         onToggleInterviewer={() => setInterviewerOpen(!interviewerOpen)}
+        onPause={() => void act(() => pause.mutateAsync())}
+        onResume={() => void act(() => resume.mutateAsync())}
         onFinish={() => {
           if (window.confirm('Stop the clock and finish the interview now?')) {
             void act(() => finish.mutateAsync());
@@ -472,7 +498,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
         </div>
       )}
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
         <div
           className="bg-white flex flex-col min-h-0 shrink-0"
           style={{ width: leftWidth }}
@@ -497,7 +523,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
               <PreludeHint compact />
               <button
                 onClick={onRun}
-                disabled={runState.isRunning || !active || !synced}
+                disabled={runState.isRunning || !running || !synced}
                 title="Run against the input below — no judging"
                 className="inline-flex items-center gap-1.5 px-3 py-1 text-gray-700 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
               >
@@ -506,7 +532,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
               </button>
               <button
                 onClick={onSubmit}
-                disabled={isJudging || !active || !synced}
+                disabled={isJudging || !running || !synced}
                 title="Judge this part against all its tests"
                 className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
               >
@@ -523,7 +549,7 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
                 collab={collab}
                 fileId={fileId}
                 path={filePath}
-                readOnly={!active}
+                readOnly={!running}
               />
             ) : (
               <div className="h-full flex items-center justify-center text-gray-400 text-sm">
@@ -600,6 +626,31 @@ function Workbench({ session }: { session: InterviewSessionDetail }) {
               />
             </div>
           </>
+        )}
+
+        {paused && (
+          <div className="absolute inset-0 z-20 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center gap-3 text-center px-6">
+            <Pause size={28} className="text-gray-400" />
+            <div className="font-mono text-4xl font-semibold tabular-nums text-gray-900">
+              {fmtClock(countdown.remainingS)}
+            </div>
+            <div className="text-sm text-gray-600">
+              Clock paused since{' '}
+              {new Date(session.paused_at!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              {session.pause_count > 1 && ` · ${session.pause_count} pauses this run`}
+            </div>
+            <p className="text-xs text-gray-400 max-w-sm">
+              The statement, your code and the interviewer stay covered until you resume. Finish
+              early and Abandon still work from the bar above.
+            </p>
+            <button
+              onClick={() => void act(() => resume.mutateAsync())}
+              disabled={busy}
+              className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+            >
+              <Play size={14} /> Resume
+            </button>
+          </div>
         )}
       </div>
     </div>

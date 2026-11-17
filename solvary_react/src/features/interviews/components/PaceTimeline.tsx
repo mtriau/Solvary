@@ -1,4 +1,5 @@
 import type { InterviewSessionReview } from '@/shared/types/api';
+import { runningMsBetween } from '../lib/clock';
 import { fmtClock } from '../lib/format';
 
 /**
@@ -12,8 +13,8 @@ export function PaceTimeline({ review }: { review: InterviewSessionReview }) {
     ...review.stages.map((s) => Math.max(s.result.time_spent_s, s.budget_s ?? 0)),
   );
   const startMs = new Date(review.started_at).getTime();
-  // Submission ticks are placed inside their stage's bar by the time they
-  // happened relative to that stage's first activation
+  // Submission ticks are placed inside their stage's bar by the running time
+  // (pauses excluded) between that stage's first activation and the submission
   const firstAt = (ordinal: number) => {
     const e = review.timeline.find((t) => t.stage === ordinal);
     return e ? new Date(e.at).getTime() : startMs;
@@ -46,7 +47,8 @@ export function PaceTimeline({ review }: { review: InterviewSessionReview }) {
                 style={{ width: `${(spent / maxS) * 100}%` }}
               />
               {ticks.map((sub) => {
-                const offsetS = (new Date(sub.created_at).getTime() - firstAt(s.ordinal)) / 1000;
+                const offsetS =
+                  runningMsBetween(review.pauses, firstAt(s.ordinal), new Date(sub.created_at).getTime()) / 1000;
                 const left = Math.min(100, Math.max(0, (offsetS / maxS) * 100));
                 return (
                   <div

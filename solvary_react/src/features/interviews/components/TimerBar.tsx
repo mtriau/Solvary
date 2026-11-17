@@ -1,4 +1,4 @@
-import { CheckCircle2, Flag, Lock, MessageSquare, Timer, XCircle } from 'lucide-react';
+import { CheckCircle2, Flag, Lock, MessageSquare, Pause, Play, Timer, XCircle } from 'lucide-react';
 import type { InterviewSessionDetail } from '@/shared/types/api';
 import type { Countdown } from '../hooks/useCountdown';
 import { fmtClock } from '../lib/format';
@@ -10,6 +10,9 @@ interface Props {
   stageElapsedS: number;
   onFinish: () => void;
   onAbandon: () => void;
+  /** Stop / restart the clock (omitted → no button). */
+  onPause?: () => void;
+  onResume?: () => void;
   busy?: boolean;
   /** Interviewer pane toggle (omitted → no button). */
   interviewerOpen?: boolean;
@@ -25,7 +28,7 @@ const PHASE_STYLES: Record<string, string> = {
 
 /**
  * Sticky header: the interview clock, overall progress, one chip per stage
- * (locked / current with budget / best score), finish & abandon.
+ * (locked / current with budget / best score), pause, finish & abandon.
  */
 export function TimerBar({
   session,
@@ -33,6 +36,8 @@ export function TimerBar({
   stageElapsedS,
   onFinish,
   onAbandon,
+  onPause,
+  onResume,
   busy,
   interviewerOpen,
   onToggleInterviewer,
@@ -48,14 +53,29 @@ export function TimerBar({
   return (
     <div className="border-b border-gray-200 bg-white px-4 py-2 shrink-0">
       <div className="flex items-center gap-4">
-        <div className={`flex items-center gap-1.5 font-mono text-2xl font-semibold tabular-nums ${PHASE_STYLES[countdown.phase]}`}>
-          <Timer size={20} />
+        <div
+          className={`flex items-center gap-1.5 font-mono text-2xl font-semibold tabular-nums ${
+            countdown.paused ? 'text-gray-400' : PHASE_STYLES[countdown.phase]
+          }`}
+        >
+          {countdown.paused ? <Pause size={20} /> : <Timer size={20} />}
           {fmtClock(countdown.remainingS)}
+          {countdown.paused && (
+            <span className="ml-1 font-sans text-[11px] font-medium uppercase tracking-wide">paused</span>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
             <div
-              className={`h-full transition-[width] ${countdown.phase === 'ok' ? 'bg-indigo-500' : countdown.phase === 'warn' ? 'bg-amber-500' : 'bg-red-500'}`}
+              className={`h-full transition-[width] ${
+                countdown.paused
+                  ? 'bg-gray-300'
+                  : countdown.phase === 'ok'
+                    ? 'bg-indigo-500'
+                    : countdown.phase === 'warn'
+                      ? 'bg-amber-500'
+                      : 'bg-red-500'
+              }`}
               style={{ width: `${usedPct}%` }}
             />
           </div>
@@ -96,6 +116,14 @@ export function TimerBar({
                 </span>
               );
             })}
+            {session.paused_s > 0 && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 font-mono"
+                title={`The clock stood still for ${fmtClock(session.paused_s)} over ${session.pause_count} pause${session.pause_count === 1 ? '' : 's'}`}
+              >
+                <Pause size={10} /> {fmtClock(session.paused_s)}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -111,6 +139,26 @@ export function TimerBar({
               aria-pressed={interviewerOpen}
             >
               <MessageSquare size={12} /> Interviewer
+            </button>
+          )}
+          {onPause && onResume && (
+            <button
+              onClick={countdown.paused ? onResume : onPause}
+              disabled={busy}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border ${
+                countdown.paused
+                  ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+              title={
+                countdown.paused
+                  ? 'Restart the clock'
+                  : 'Stop the clock — statement, code and interviewer are covered until you resume'
+              }
+              aria-pressed={countdown.paused}
+            >
+              {countdown.paused ? <Play size={12} /> : <Pause size={12} />}
+              {countdown.paused ? 'Resume' : 'Pause'}
             </button>
           )}
           <button

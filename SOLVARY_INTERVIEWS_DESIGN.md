@@ -8,7 +8,8 @@ differ from the draft: `switch` is `questions`-only
 (in `levels` earlier statements stay readable in the payload, so no server round
 trip is needed to re-read them); strict `levels` auto-advance is applied lazily on
 any touch, stamped at the deadline; admin `POST /v1/interviews/templates` landed
-with I1 because the tests author templates through it.
+with I1 because the tests author templates through it. **Pausing** (decision 11,
+reversed 2026-11-17): the clock can be stopped and restarted; see §5 *Pause*.
 
 Originally written against the codebase as of the 2026-11-04 audit fixes (Run button,
 Ask AI, quota fix).
@@ -81,7 +82,7 @@ the SSE contract.
 | 8 | Time attribution | Session keeps a `timeline: [{stage, at}]`; the server appends on start, advance, and stage switch. Time per stage = Σ intervals where that stage was current. | One mechanism for both formats; the review page's pace chart reads it directly. |
 | 9 | AI assist during the interview | **Off**. On (with the session's problems authorized) on the review page. | It is a mock *interview*. The post-mortem is where AI earns its keep ("why did I burn 30 minutes on part 2?"). |
 | 10 | Concurrency | One **active** session per user. Starting another → 409 with the active id (resume or abandon). | Simplifies the timer UI (one global banner) and the quota story. |
-| 11 | Pausing | **None.** `abandon` ends the session without a score. | Interviews don't pause. |
+| 11 | Pausing | ~~None.~~ **Explicit pause (2026-11-17).** `POST …/pause` / `…/resume` stop and restart the server clock; the session keeps `pauses: [{start, end?}]` and every clock computation subtracts those intervals (§5 *Pause*). | Real interviews don't pause, but a 90-minute block is hard to find around work and life, and a paused run beats no run. Pauses are recorded and shown on the review so the result is read honestly. Rejected: shifting `started_at` / `ends_at` / the timeline on resume — submissions and interviewer turns carry real wall-clock timestamps that the review reads. |
 
 ## 4. Data model
 
@@ -170,6 +171,24 @@ POST /sessions {template}        ┌──────────┐  advance /
   statements, but the current stage (what Submit targets) only moves forward.
 - **Submit.** `POST /v1/submissions {problem_id, language, code, interview_session_id}`
   — see §7. The client always submits the session's **current stage**.
+- **Pause** (2026-11-17). `POST …/pause` appends `{start: now}` to `session.pauses`;
+  `POST …/resume` sets its `end`. `ends_at` as stored stays the nominal deadline
+  (`started_at + duration_s`, so `duration_s` and scaled budgets are unaffected); the
+  **served** `ends_at` is `effective_ends_at = ends_at + Σ paused`, where a pause in
+  progress counts through `now` — so while paused the served deadline moves with the
+  server clock and the remaining time stands still. Time per stage
+  (`stage_times`), strict stage deadlines (`wall_time_after`: the wall-clock moment
+  the running clock reaches Σ budgets), `time_used_s` and the interviewer's clock
+  all subtract paused intervals; lazy expiry and strict auto-advance therefore never
+  fire while paused. While paused the server refuses **submit, advance and switch**
+  (409 "The clock is paused"); finish and abandon work and close the pause first.
+  Pausing is refused once the (effective) time is up. Every session response carries
+  `paused_at` (start of the pause in progress, else null), `paused_s` (total so far)
+  and `pause_count`; the detail payload carries `pauses[]`. Client: `useCountdown`
+  takes `pausedAt` and freezes "now" at the payload's `server_time`; the workbench
+  (statement, editor, interviewer) is covered by a *Clock paused* panel with a Resume
+  button; Run/Submit are disabled; the mic and the idle trigger are off; review
+  offsets and the pace chart are in running time (`lib/clock.ts`).
 
 ## 6. REST API (all under `/api`, auth required)
 
@@ -182,6 +201,8 @@ POST /sessions {template}        ┌──────────┐  advance /
 | GET | `/v1/interviews/sessions/{id}` | **the interview payload**: session fields + `server_time` + `stages[]`. For `ordinal ≤ unlocked_through` the stage carries the full `ProblemDetail` (statement, starter, sample tests) + `file_id`; locked stages carry only `ordinal`, `title`, `budget_s`, `locked: true`. Includes derived `StageResult`s. Owner or admin only. |
 | POST | `/v1/interviews/sessions/{id}/advance` | levels only (§5). Returns the updated session payload (new stage revealed). |
 | POST | `/v1/interviews/sessions/{id}/switch` | `{stage}` — mark the current stage (time attribution + which problem Submit targets in `questions`). |
+| POST | `/v1/interviews/sessions/{id}/pause` | stop the clock (409 if already paused or time is up). Returns the session payload with `paused_at` set. |
+| POST | `/v1/interviews/sessions/{id}/resume` | restart the clock (409 if not paused). |
 | POST | `/v1/interviews/sessions/{id}/finish` | early finish → `finished`. |
 | POST | `/v1/interviews/sessions/{id}/abandon` | → `abandoned`, no score. |
 | GET | `/v1/interviews/sessions/{id}/review` | after end only (409 while active): everything in the session payload **plus** every stage unlocked, `editorial_md` per stage, the full submission list, and the pace timeline. |
@@ -376,7 +397,9 @@ thresholds, single `onExpire`). Build + lint in CI as today.
 2. **Levels show hidden-test pass counts** during the interview (status + ordinal), like
    the real thing; no stdin/expected for hidden cases.
 3. **Ask AI is disabled** during an active session, enabled on review.
-4. **No pause.** Abandon exists.
+4. ~~**No pause.** Abandon exists.~~ **Pause added 2026-11-17** (§5 *Pause*): a stopped
+   clock covers the workbench and refuses submissions; pauses are recorded and shown on
+   the review. Abandon still exists.
 5. Budgets are **advisory** in `coached` mode (the default); `strict` is opt-in per template.
 6. The session workspace is **single-file per stage** (levels: one `main.py`; questions:
    `q1.py` … `q4.py`); no file CRUD during an interview.

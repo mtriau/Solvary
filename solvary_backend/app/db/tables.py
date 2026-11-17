@@ -312,6 +312,7 @@ class InterviewSessionRow(Base, TimestampMixin):
     unlocked_through: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     stage_files: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     timeline: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    pauses: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
     __table_args__ = (
         Index("ix_interview_sessions_user_created", "user_id", "created_at"),

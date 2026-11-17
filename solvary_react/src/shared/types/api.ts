@@ -213,7 +213,13 @@ export interface InterviewSessionSummary {
   ends_at: string;
   finished_at: string | null;
   server_time: string;
+  /** Start of the pause in progress; null while the clock runs. */
+  paused_at: string | null;
+  /** Total time the clock has stood still (the pause in progress included). */
+  paused_s: number;
+  pause_count: number;
   score: InterviewScore;
+  /** Running time only: pauses are excluded. */
   time_used_s: number;
   stages_reached: number;
   stage_count: number;
@@ -247,12 +253,19 @@ export interface InterviewStageView extends InterviewStageInfo {
   result: InterviewStageResult;
 }
 
+/** An interval the clock stood still; `end` is null while the pause is in progress. */
+export interface InterviewPause {
+  start: string;
+  end: string | null;
+}
+
 export interface InterviewSessionDetail extends InterviewSessionSummary {
   workspace_id: string | null;
   current_stage: number;
   unlocked_through: number;
   stages: InterviewStageView[];
   timeline: { stage: number; at: string }[];
+  pauses: InterviewPause[];
 }
 
 export interface InterviewSessionReview extends InterviewSessionDetail {

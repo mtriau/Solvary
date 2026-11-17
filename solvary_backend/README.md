@@ -298,7 +298,11 @@ session payload is their only reader — locked stages are served as stubs.
 
 Endpoints under `/v1/interviews`: `GET templates`, `POST templates` (admin),
 `POST sessions`, `GET sessions`, `GET sessions/active`, `GET sessions/{id}`,
-`POST …/advance|switch|finish|abandon`, `GET …/review`. Pacing coach:
+`POST …/advance|switch|pause|resume|finish|abandon`, `GET …/review`. The clock
+can be **paused** (`pause` / `resume`): the session records the intervals and
+every clock computation — served `ends_at`, time per stage, strict deadlines,
+`time_used_s` — excludes them; submit / advance / switch are refused while
+paused, and the review shows the pause count and total. Pacing coach:
 per-stage budgets, nudges, strict mode (`pacing="strict"` → hard per-stage
 deadlines), a planned-vs-actual timeline and a one-line diagnosis on review,
 plus the **Clock Beater** and **Pacer** badges.

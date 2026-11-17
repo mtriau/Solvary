@@ -1,7 +1,7 @@
 """Mock interviews (SOLVARY_INTERVIEWS_DESIGN.md §12): lifecycle, no-peek,
 server clock + grace, advance policies, questions-format switching, derived
-results, strict pacing, assist gating, RBAC. The clock is monkeypatched on
-`interview_service.utcnow` — no sleeps."""
+results, strict pacing, pausing, assist gating, RBAC. The clock is
+monkeypatched on `interview_service.utcnow` — no sleeps."""
 
 import json
 import uuid
@@ -522,3 +522,180 @@ def test_stage_times_and_deadlines_pure():
     assert d == {1: t0 + timedelta(seconds=60), 2: None, 3: None}
     tpl.pacing = "coached"
     assert stage_deadlines(tpl, stages, t0) == {1: None, 2: None, 3: None}
+
+
+# ── pausing (design §5, decision 11) ───────────────────────────────
+
+
+def _at(seconds: int) -> datetime:
+    return BASE + timedelta(seconds=seconds)
+
+
+async def test_pause_stops_the_clock(client: AsyncClient, clock):
+    """Paused: the served deadline, stage time and strict deadlines stand
+    still; submit / advance are refused; nothing expires. Resumed: the clock
+    picks up where it stopped and later math excludes the pause."""
+    admin = await _admin(client)
+    probs = [await _problem(client, admin) for _ in range(2)]
+    tpl = await _template(client, admin, probs, duration_s=600, budgets=[300, 300], pacing="strict")
+    h = await _register(client)
+    s = await _start(client, h, tpl)
+    url = f"/api/v1/interviews/sessions/{s['id']}"
+    assert s["paused_at"] is None and s["paused_s"] == 0 and s["pause_count"] == 0
+    assert s["pauses"] == []
+
+    clock.now = _at(100)
+    r = await client.post(f"{url}/pause", headers=h)
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert s["paused_at"].startswith("2026-11-04T12:01:40")
+    assert s["ends_at"].startswith("2026-11-04T12:10:00")  # nothing shifted yet
+    assert s["pause_count"] == 1 and s["pauses"] == [{"start": s["paused_at"], "end": None}]
+    assert (await client.post(f"{url}/pause", headers=h)).status_code == 409
+    r = await _submit(client, h, s, probs[0]["id"])
+    assert r.status_code == 409 and "paused" in r.json()["detail"].lower()
+    r = await client.post(f"{url}/advance", headers=h)
+    assert r.status_code == 409 and "paused" in r.json()["detail"].lower()
+
+    # Fifteen minutes later — well past the nominal end — still active, the
+    # deadline moved with the wall clock, stage 1 still shows 100 s of work,
+    # and the strict deadline for stage 1 (nominal +300 s) moved by the pause
+    clock.now = _at(1000)
+    s = (await client.get(url, headers=h)).json()
+    assert s["status"] == "active"
+    assert s["ends_at"].startswith("2026-11-04T12:25:00")  # 12:10 + 900 s paused
+    assert s["paused_s"] == 900 and s["time_used_s"] == 100
+    assert s["stages"][0]["result"]["time_spent_s"] == 100
+    assert s["stages"][0]["deadline_at"].startswith("2026-11-04T12:20:00")
+    assert s["current_stage"] == 1  # no auto-advance while paused
+    active = (await client.get("/api/v1/interviews/sessions/active", headers=h)).json()
+    assert active and active["id"] == s["id"] and active["paused_at"] is not None
+
+    r = await client.post(f"{url}/resume", headers=h)
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert s["paused_at"] is None and s["paused_s"] == 900 and s["pause_count"] == 1
+    assert s["pauses"][0]["end"].startswith("2026-11-04T12:16:40")
+    assert s["ends_at"].startswith("2026-11-04T12:25:00")
+    assert (await client.post(f"{url}/resume", headers=h)).status_code == 409
+
+    clock.now = _at(1050)
+    assert (await _submit(client, h, s, probs[0]["id"])).status_code == 201
+    s = (await client.get(url, headers=h)).json()
+    assert s["time_used_s"] == 150 and s["stages"][0]["result"]["time_spent_s"] == 150
+
+    # Strict pacing: stage 1's deadline is now 12:20:00 (300 s running)
+    clock.now = _at(1250)
+    s = (await client.get(url, headers=h)).json()
+    assert s["current_stage"] == 2
+    assert s["timeline"][-1]["at"].startswith("2026-11-04T12:20:00")
+    assert s["stages"][0]["result"]["time_spent_s"] == 300
+
+    clock.now = _at(1300)
+    r = await client.post(f"{url}/finish", headers=h)
+    assert r.status_code == 200
+    s = r.json()
+    assert s["status"] == "finished" and s["time_used_s"] == 400  # 1300 − 900 paused
+    assert s["stages"][1]["result"]["time_spent_s"] == 100
+    review = (await client.get(f"{url}/review", headers=h)).json()
+    assert review["pause_count"] == 1 and review["paused_s"] == 900
+
+
+async def test_paused_session_expires_only_after_resume(client: AsyncClient, clock):
+    admin = await _admin(client)
+    probs = [await _problem(client, admin)]
+    tpl = await _template(client, admin, probs, duration_s=600)
+    h = await _register(client)
+    s = await _start(client, h, tpl)
+    url = f"/api/v1/interviews/sessions/{s['id']}"
+
+    clock.now = _at(60)
+    assert (await client.post(f"{url}/pause", headers=h)).status_code == 200
+    clock.now = _at(600)  # the nominal deadline passes while paused
+    assert (await client.get(url, headers=h)).json()["status"] == "active"
+    s = (await client.post(f"{url}/resume", headers=h)).json()
+    assert s["ends_at"].startswith("2026-11-04T12:19:00")  # 12:10 + 540 s
+
+    clock.now = _at(1141)  # inside the grace
+    assert (await _submit(client, h, s, probs[0]["id"])).status_code == 201
+    clock.now = _at(1145)
+    r = await _submit(client, h, s, probs[0]["id"])
+    assert r.status_code == 409 and "time is up" in r.json()["detail"].lower()
+    s = (await client.get(url, headers=h)).json()
+    assert s["status"] == "expired"
+    assert s["finished_at"].startswith("2026-11-04T12:19:00")
+    assert s["time_used_s"] == 600 and s["paused_s"] == 540
+    # Pausing is refused once the time is up
+    assert (await client.post(f"{url}/pause", headers=h)).status_code == 409
+
+
+async def test_finish_while_paused_closes_the_pause(client: AsyncClient, clock):
+    admin = await _admin(client)
+    probs = [await _problem(client, admin)]
+    tpl = await _template(client, admin, probs, duration_s=600)
+    h = await _register(client)
+    s = await _start(client, h, tpl)
+    url = f"/api/v1/interviews/sessions/{s['id']}"
+
+    clock.now = _at(60)
+    assert (await client.post(f"{url}/pause", headers=h)).status_code == 200
+    clock.now = _at(900)
+    s = (await client.post(f"{url}/finish", headers=h)).json()
+    assert s["status"] == "finished" and s["paused_at"] is None
+    assert s["time_used_s"] == 60 and s["paused_s"] == 840
+    assert len(s["pauses"]) == 1 and s["pauses"][0]["end"].startswith("2026-11-04T12:15:00")
+    assert s["stages"][0]["result"]["time_spent_s"] == 60
+
+
+def test_pause_helpers_pure():
+    from app.models.interview import InterviewStage, InterviewTemplate
+    from app.services.interview_service import (
+        paused_overlap_s,
+        stage_deadlines,
+        stage_times,
+        wall_time_after,
+    )
+
+    t0 = BASE
+    pauses = [
+        {"start": _at(100).isoformat(), "end": _at(160).isoformat()},
+        {"start": _at(300).isoformat()},  # in progress
+    ]
+    assert paused_overlap_s(pauses, t0, _at(50)) == 0.0
+    assert paused_overlap_s(pauses, t0, _at(130)) == 30.0
+    assert paused_overlap_s(pauses, _at(120), _at(200)) == 40.0
+    assert paused_overlap_s(pauses, t0, _at(400)) == 160.0  # 60 closed + 100 open
+
+    timeline = [
+        {"stage": 1, "at": t0.isoformat()},
+        {"stage": 2, "at": _at(200).isoformat()},
+    ]
+    assert stage_times(timeline, _at(400), pauses) == {1: 140.0, 2: 100.0}
+    assert stage_times(timeline, _at(400)) == {1: 200.0, 2: 200.0}  # no pauses: unchanged
+
+    # 120 running seconds: 100 s, a 60 s pause, 20 s more → wall time 180 s
+    assert wall_time_after(t0, 120, pauses[:1], _at(1000)) == _at(180)
+    # a moment inside the open pause lies in the future for as long as it lasts
+    assert wall_time_after(t0, 250, pauses, _at(1000)) == _at(1010)
+    # the clock stops exactly as the deadline passes: no shift
+    assert wall_time_after(t0, 100, pauses[:1], _at(1000)) == _at(100)
+
+    tpl = InterviewTemplate(
+        id="t",
+        slug="t",
+        title="t",
+        description_md="",
+        format="levels",
+        duration_s=600,
+        pacing="strict",
+    )
+    stages = [
+        InterviewStage(
+            id="a", template_id="t", ordinal=1, problem_id="p1", title="1", budget_s=120
+        ),
+        InterviewStage(
+            id="b", template_id="t", ordinal=2, problem_id="p2", title="2", budget_s=120
+        ),
+    ]
+    d = stage_deadlines(tpl, stages, t0, None, pauses[:1], _at(1000))
+    assert d == {1: _at(180), 2: _at(300)}

@@ -10,6 +10,7 @@ import {
   useInterviewReview,
   useStartInterview,
 } from '@/features/interviews/hooks/useInterviewSession';
+import { runningMsBetween } from '@/features/interviews/lib/clock';
 import { STATUS_LABELS, fmtClock, fmtMinutes } from '@/features/interviews/lib/format';
 import { ApiError } from '@/shared/lib/api-client';
 
@@ -61,9 +62,17 @@ export default function InterviewReviewPage() {
     );
   }
 
+  // Submission offsets are in running time (pauses excluded), like time_used_s
+  const startMs = new Date(review.started_at).getTime();
+  const offsetOf = (createdAt: string) =>
+    fmtClock(runningMsBetween(review.pauses, startMs, new Date(createdAt).getTime()) / 1000);
+  const pausedNote =
+    review.pause_count > 0
+      ? ` · paused ${review.pause_count}× (${fmtClock(review.paused_s)})`
+      : '';
   const tiles = [
     { label: 'Score', value: `${review.score.percent}%`, context: `${review.score.passed} of ${review.score.total} tests` },
-    { label: 'Time used', value: fmtClock(review.time_used_s), context: `of ${fmtMinutes(review.duration_s)}` },
+    { label: 'Time used', value: fmtClock(review.time_used_s), context: `of ${fmtMinutes(review.duration_s)}${pausedNote}` },
     { label: 'Parts reached', value: `${review.stages_reached}/${review.stage_count}`, context: STATUS_LABELS[review.status] },
     {
       label: 'Accepted parts',
@@ -213,7 +222,7 @@ export default function InterviewReviewPage() {
                             {attempts.map((sub, i) => (
                               <option key={sub.id} value={sub.id}>
                                 Attempt {i + 1} · +
-                                {fmtClock((new Date(sub.created_at).getTime() - new Date(review.started_at).getTime()) / 1000)}
+                                {offsetOf(sub.created_at)}
                                 {' · '}
                                 {sub.verdict.replace('_', ' ')} {sub.passed}/{sub.total}
                               </option>
@@ -275,7 +284,7 @@ export default function InterviewReviewPage() {
                       className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-gray-50 disabled:cursor-default disabled:hover:bg-white"
                     >
                       <span className="text-gray-400 font-mono w-14">
-                        +{fmtClock((new Date(sub.created_at).getTime() - new Date(review.started_at).getTime()) / 1000)}
+                        +{offsetOf(sub.created_at)}
                       </span>
                       <span className="flex-1 text-gray-700">{stage?.title ?? sub.problem_id}</span>
                       <span className={`font-medium capitalize ${sub.verdict === 'accepted' ? 'text-green-600' : 'text-red-600'}`}>

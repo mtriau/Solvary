@@ -85,6 +85,16 @@ async def switch(
     return await service.switch(user, session_id, data.stage)
 
 
+@router.post("/sessions/{session_id}/pause", response_model=SessionDetail)
+async def pause(session_id: str, user: CurrentUser, service: Service) -> SessionDetail:
+    return await service.pause(user, session_id)
+
+
+@router.post("/sessions/{session_id}/resume", response_model=SessionDetail)
+async def resume(session_id: str, user: CurrentUser, service: Service) -> SessionDetail:
+    return await service.resume(user, session_id)
+
+
 @router.post("/sessions/{session_id}/finish", response_model=SessionDetail)
 async def finish(session_id: str, user: CurrentUser, service: Service) -> SessionDetail:
     return await service.finish(user, session_id)

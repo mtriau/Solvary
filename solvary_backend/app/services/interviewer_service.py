@@ -366,7 +366,12 @@ class InterviewerService:
         budgets = iv.scaled_budgets(template, stages, session)
         current = next((s for s in stages if s.ordinal == session.current_stage), stages[0])
         last = session.timeline[-1] if session.timeline else None
-        elapsed = int((now - iv._parse(last["at"])).total_seconds()) if last else 0
+        elapsed = 0
+        if last:
+            since = iv._parse(last["at"])
+            elapsed = int(
+                (now - since).total_seconds() - iv.paused_overlap_s(session.pauses, since, now)
+            )
         problem = problems.get(current.problem_id)
         harness_files = {}
         if problem is not None and problem.judge_mode == "pytest" and problem.harness:
@@ -377,7 +382,7 @@ class InterviewerService:
             format=template.format,
             status=session.status,
             language=session.language,
-            remaining_s=max(0, int((session.ends_at - now).total_seconds())),
+            remaining_s=max(0, int((iv.effective_ends_at(session, now) - now).total_seconds())),
             current_stage=session.current_stage,
             unlocked_through=session.unlocked_through,
             stage_count=len(stages),

@@ -7,6 +7,8 @@ import {
   fetchInterviewSessions,
   fetchInterviewTemplates,
   finishInterview,
+  pauseInterview,
+  resumeInterview,
   startInterview,
   switchInterviewStage,
 } from '@/shared/lib/api';
@@ -61,10 +63,12 @@ export function useInterviewSession(id: string) {
     mutationFn: (stage: number) => switchInterviewStage(id, stage),
     onSuccess: settle,
   });
+  const pause = useMutation({ mutationFn: () => pauseInterview(id), onSuccess: settle });
+  const resume = useMutation({ mutationFn: () => resumeInterview(id), onSuccess: settle });
   const finish = useMutation({ mutationFn: () => finishInterview(id), onSuccess: settle });
   const abandon = useMutation({ mutationFn: () => abandonInterview(id), onSuccess: settle });
 
-  return { ...query, session: query.data, advance, switchStage, finish, abandon };
+  return { ...query, session: query.data, advance, switchStage, pause, resume, finish, abandon };
 }
 
 export function useStartInterview() {
